@@ -1,0 +1,22 @@
+{
+  "name": "instagram-dm-bot",
+  "version": "2.0.0",
+  "description": "인스타그램 댓글 → DM 자동발송 봇 (Google Sheets 연동)",
+  "type": "module",
+  "scripts": {
+    "dev": "vercel dev",
+    "build": "tsc",
+    "deploy": "vercel deploy --prod",
+    "test": "vitest",
+    "test:ui": "vitest --ui"
+  },
+  "dependencies": {
+    "dotenv": "^16.3.1"
+  },
+  "devDependencies": {
+    "@types/node": "^20.10.0",
+    "typescript": "^5.3.0",
+    "vitest": "^1.0.0",
+    "vercel": "^32.0.0"
+  }
+}
