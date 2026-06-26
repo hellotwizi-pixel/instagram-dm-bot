@@ -8,4 +8,3 @@ dist
 .DS_Store
 .idea
 .vscode/settings.json
-package-lock.json
