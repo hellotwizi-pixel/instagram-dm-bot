@@ -3,6 +3,9 @@
   "version": "2.0.0",
   "description": "인스타그램 댓글 → DM 자동발송 봇 (Google Sheets 연동)",
   "type": "module",
+  "engines": {
+    "node": "24.x"
+  },
   "scripts": {
     "dev": "vercel dev",
     "build": "tsc",

@@ -1,12 +1,3 @@
 {
-  "version": 2,
-  "functions": {
-    "api/*.ts": {
-      "runtime": "nodejs20.x"
-    }
-  },
-  "env": {
-    "IG_PAGE_ACCESS_TOKEN": "@ig_page_access_token",
-    "IG_VERIFY_TOKEN": "@ig_verify_token"
-  }
+  "version": 2
 }
