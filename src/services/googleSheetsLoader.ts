@@ -4,6 +4,7 @@ interface SheetRow {
   keywords: string;
   replyText: string;
   url: string;
+  postId?: string;
 }
 
 interface CacheEntry {
@@ -32,6 +33,7 @@ function parseCSV(csvContent: string): SheetRow[] {
   const keywordsIdx = headers.indexOf('keywords');
   const replyTextIdx = headers.indexOf('replytext');
   const urlIdx = headers.indexOf('url');
+  const postIdIdx = headers.indexOf('postid');
 
   if (keywordsIdx === -1 || replyTextIdx === -1 || urlIdx === -1) {
     console.error('[GoogleSheets] CSV 헤더가 잘못되었습니다. keywords, replyText, url 필요');
@@ -52,9 +54,10 @@ function parseCSV(csvContent: string): SheetRow[] {
     const keywords = parts[keywordsIdx]?.trim();
     const replyText = parts[replyTextIdx]?.trim();
     const url = parts[urlIdx]?.trim();
+    const postId = postIdIdx !== -1 ? parts[postIdIdx]?.trim() : undefined;
 
     if (keywords && replyText && url) {
-      rows.push({ keywords, replyText, url });
+      rows.push({ keywords, replyText, url, postId: postId || undefined });
     }
   }
 
@@ -66,6 +69,7 @@ function convertRowsToRules(rows: SheetRow[]): KeywordRule[] {
     keywords: parseKeywords(row.keywords),
     replyText: row.replyText,
     url: row.url,
+    postId: row.postId,
   }));
 }
 

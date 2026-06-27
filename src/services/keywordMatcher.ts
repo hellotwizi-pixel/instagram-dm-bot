@@ -13,9 +13,14 @@ export function matchKeyword(commentText: string, rule: KeywordRule): boolean {
 
 export function findMatchingRule(
   commentText: string,
-  rules: KeywordRule[]
+  rules: KeywordRule[],
+  mediaId?: string
 ): KeywordRule | null {
-  for (const rule of rules) {
+  // 이 게시물에 한정된 규칙을 일반 규칙보다 먼저 확인
+  const scopedToThisPost = rules.filter(rule => rule.postId && rule.postId === mediaId);
+  const generalRules = rules.filter(rule => !rule.postId);
+
+  for (const rule of [...scopedToThisPost, ...generalRules]) {
     if (matchKeyword(commentText, rule)) {
       return rule;
     }

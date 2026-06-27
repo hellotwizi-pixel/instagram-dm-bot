@@ -88,11 +88,12 @@ async function handlePostRequest(
 
       const commentId = change.value.id;
       const commentText = change.value.text;
+      const mediaId = change.value.media?.id;
 
       console.log(`[Webhook] Processing comment: ${commentId}`);
       console.log(`[Webhook] Comment text: "${commentText}"`);
 
-      const matchedRule = findMatchingRule(commentText, keywordRules);
+      const matchedRule = findMatchingRule(commentText, keywordRules, mediaId);
 
       if (!matchedRule) {
         console.log(`[Webhook] No matching rule found for comment: ${commentId}`);
