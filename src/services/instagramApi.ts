@@ -1,7 +1,7 @@
 import type { PrivateReplyResponse, GraphAPIError } from '../types.js';
 
-const GRAPH_API_VERSION = 'v19.0';
-const GRAPH_API_BASE = 'https://graph.facebook.com';
+const GRAPH_API_VERSION = 'v21.0';
+const GRAPH_API_BASE = 'https://graph.instagram.com';
 
 export async function sendPrivateReply(
   commentId: string,

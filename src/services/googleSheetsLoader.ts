@@ -22,6 +22,44 @@ function parseKeywords(keywordString: string): string[] {
     .filter(k => k.length > 0);
 }
 
+/**
+ * 구글시트가 내보내는 CSV는 쉼표가 포함된 셀을 "..."로 감싸므로,
+ * 단순 split(',')로는 키워드 칸에 쉼표가 여러 개 들어간 행을 제대로 못 나눈다.
+ * 따옴표 안의 쉼표는 무시하고, ""는 " 한 글자로 풀어주는 최소한의 CSV 파서.
+ */
+function parseCSVLine(line: string): string[] {
+  const fields: string[] = [];
+  let current = '';
+  let insideQuotes = false;
+
+  for (let i = 0; i < line.length; i++) {
+    const char = line[i];
+
+    if (insideQuotes) {
+      if (char === '"') {
+        if (line[i + 1] === '"') {
+          current += '"';
+          i++;
+        } else {
+          insideQuotes = false;
+        }
+      } else {
+        current += char;
+      }
+    } else if (char === '"') {
+      insideQuotes = true;
+    } else if (char === ',') {
+      fields.push(current);
+      current = '';
+    } else {
+      current += char;
+    }
+  }
+  fields.push(current);
+
+  return fields;
+}
+
 function parseCSV(csvContent: string): SheetRow[] {
   const lines = csvContent.trim().split('\n');
   if (lines.length < 2) {
@@ -29,7 +67,7 @@ function parseCSV(csvContent: string): SheetRow[] {
   }
 
   // 헤더 파싱 (첫 줄)
-  const headers = lines[0].split(',').map(h => h.trim().toLowerCase());
+  const headers = parseCSVLine(lines[0]).map(h => h.trim().toLowerCase());
   const keywordsIdx = headers.indexOf('keywords');
   const replyTextIdx = headers.indexOf('replytext');
   const urlIdx = headers.indexOf('url');
@@ -46,7 +84,7 @@ function parseCSV(csvContent: string): SheetRow[] {
     const line = lines[i].trim();
     if (!line) continue;
 
-    const parts = line.split(',');
+    const parts = parseCSVLine(line);
     if (parts.length <= Math.max(keywordsIdx, replyTextIdx, urlIdx)) {
       continue;
     }

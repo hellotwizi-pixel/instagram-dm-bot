@@ -1,4 +1,5 @@
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { loadKeywordsFromGoogleSheets, clearCache } from '../services/googleSheetsLoader.js';
 
 // Google Sheets 파싱 함수들을 테스트하기 위해 직접 구현 포함
 function parseKeywords(keywordString: string): string[] {
@@ -113,6 +114,54 @@ data,data,data`;
       const csv = `keywords,replyText,url`;
       const result = parseCSV(csv);
       expect(result).toHaveLength(0);
+    });
+  });
+
+  describe('loadKeywordsFromGoogleSheets (실제 구현)', () => {
+    beforeEach(() => {
+      clearCache();
+      vi.unstubAllGlobals();
+    });
+
+    it('키워드 칸에 쉼표로 여러 단어가 들어가면 구글시트가 따옴표로 감싸는데, 이 경우도 컬럼이 밀리지 않고 올바르게 읽혀야 한다', async () => {
+      const csv = [
+        'keywords,replyText,url,postId',
+        '"가격,비용,가격표",안녕하세요! 가격표는 여기입니다.,https://example.com/pricing,',
+      ].join('\n');
+
+      vi.stubGlobal(
+        'fetch',
+        vi.fn().mockResolvedValue({
+          ok: true,
+          text: () => Promise.resolve(csv),
+        })
+      );
+
+      const rules = await loadKeywordsFromGoogleSheets('dummy-sheet-id');
+
+      expect(rules).toHaveLength(1);
+      expect(rules[0].keywords).toEqual(['가격', '비용', '가격표']);
+      expect(rules[0].url).toBe('https://example.com/pricing');
+      expect(rules[0].postId).toBeUndefined();
+    });
+
+    it('postId 칸에 값이 있으면 해당 게시물에만 적용되는 규칙으로 읽혀야 한다', async () => {
+      const csv = [
+        'keywords,replyText,url,postId',
+        '"가격,비용",할인 안내,https://example.com/discount,17999456919123456',
+      ].join('\n');
+
+      vi.stubGlobal(
+        'fetch',
+        vi.fn().mockResolvedValue({
+          ok: true,
+          text: () => Promise.resolve(csv),
+        })
+      );
+
+      const rules = await loadKeywordsFromGoogleSheets('dummy-sheet-id');
+
+      expect(rules[0].postId).toBe('17999456919123456');
     });
   });
 });
