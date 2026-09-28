@@ -9,7 +9,7 @@ import { DEPARTMENTS, MIMIR, PROJECTS, STAFF_LIST, WINGS } from "../../company.c
 
 export const TILE = 18;
 export const COLS = 146;
-export const ROWS = 84;
+export const ROWS = 90;
 export const WORLD_W = COLS * TILE;
 export const WORLD_H = ROWS * TILE;
 
@@ -46,14 +46,29 @@ export type Island = {
   icon: string;
   kind: "project" | "wing" | "core" | "intake" | "plaza";
   color?: string;
+  /** 층: 0 = 바닥(아랫줄), 1 = 가운데 줄, 2 = 윗줄(프로젝트) */
+  level: number;
   x: number;
   y: number;
   w: number;
   h: number;
 };
 
-/** 다리: 두 점을 잇는 직선 띠 (가로 또는 세로), 폭은 타일 수 */
-export type Bridge = { from: Pt; to: Pt; width: number; kind: "avenue" | "link" };
+/** 다리: 두 점을 잇는 직선 띠 (가로 또는 세로), 폭은 타일 수. 양 끝 높이가 다르면 계단이 된다 */
+export type Bridge = {
+  from: Pt;
+  to: Pt;
+  width: number;
+  kind: "avenue" | "link";
+  /** 대로는 층이 정해져 있다. 연결 다리는 양 끝에 닿은 섬·대로의 층을 따른다 */
+  level?: number;
+  /** from 쪽 끝 높이 · to 쪽 끝 높이 (월드 단위, 초기화 때 채움) */
+  h0: number;
+  h1: number;
+};
+
+/** 한 층의 높이 (월드 단위) */
+export const LEVEL_H = 2.2;
 
 /** 책상 한 개는 3칸. 방 안쪽 왼쪽부터 채우고 오른쪽 한 칸은 통로로 남긴다 */
 function deskGrid(x: number, y: number, w: number, rows: number[], count: number): Desk[] {
@@ -86,7 +101,7 @@ export const BRIDGES: Bridge[] = [];
 export const PROJECT_ROOMS: Room[] = PROJECTS.map((p, i) => {
   const ix = PROJECT_X0 + i * (PROJECT_ISLAND_W + PROJECT_GAP);
   const iy = PROJECT_Y;
-  ISLANDS.push({ id: p.id, name: p.name, icon: p.icon, kind: "project", color: p.color, x: ix, y: iy, w: PROJECT_ISLAND_W, h: PROJECT_ISLAND_H });
+  ISLANDS.push({ id: p.id, name: p.name, icon: p.icon, kind: "project", color: p.color, level: 2, x: ix, y: iy, w: PROJECT_ISLAND_W, h: PROJECT_ISLAND_H });
   const x = ix + 1;
   const y = iy + 1;
   const w = PROJECT_ISLAND_W - 2;
@@ -115,11 +130,12 @@ export const PROJECT_ROOMS: Room[] = PROJECTS.map((p, i) => {
 });
 
 // ── 대로 ────────────────────────────────────────────────
-const AVENUE_N_Y = PROJECT_Y + PROJECT_ISLAND_H + 2; // 16
-const MID_Y = AVENUE_N_Y + 6; // 22
+// 윗줄(2층) → 북 대로(1층) 사이, 가운데 줄(1층) → 남 대로(0층) 사이는 계단이라 5~6칸을 띄운다
+const AVENUE_N_Y = PROJECT_Y + PROJECT_ISLAND_H + 5; // 19
+const MID_Y = AVENUE_N_Y + 6; // 25
 const MID_H = 19;
-const AVENUE_S_Y = MID_Y + MID_H + 3; // 44
-const LOW_Y = AVENUE_S_Y + 6; // 50
+const AVENUE_S_Y = MID_Y + MID_H + 6; // 50
+const LOW_Y = AVENUE_S_Y + 6; // 56
 const LOW_H = 19;
 
 // ── 가운데: 접수동 · 코어 · 관리동 / 아래: 제작동 · 성장동 ──
@@ -134,11 +150,11 @@ const WING_SLOTS: Record<string, { x: number; y: number }> = {
   grow: { x: COLS - 4 - WING_W, y: LOW_Y },
 };
 
-ISLANDS.push({ id: "intake", name: "접수동", icon: "⚡", kind: "intake", x: INTAKE.x, y: INTAKE.y, w: INTAKE.w, h: INTAKE.h });
-ISLANDS.push({ id: "core", name: "코어", icon: "🧠", kind: "core", x: CORE.x, y: CORE.y, w: CORE.w, h: CORE.h });
+ISLANDS.push({ id: "intake", name: "접수동", icon: "⚡", kind: "intake", level: 1, x: INTAKE.x, y: INTAKE.y, w: INTAKE.w, h: INTAKE.h });
+ISLANDS.push({ id: "core", name: "코어", icon: "🧠", kind: "core", level: 1, x: CORE.x, y: CORE.y, w: CORE.w, h: CORE.h });
 for (const wing of WINGS) {
   const slot = WING_SLOTS[wing.id];
-  ISLANDS.push({ id: wing.id, name: wing.name, icon: wing.icon, kind: "wing", x: slot.x, y: slot.y, w: WING_W, h: LOW_H });
+  ISLANDS.push({ id: wing.id, name: wing.name, icon: wing.icon, kind: "wing", level: slot.y === MID_Y ? 1 : 0, x: slot.x, y: slot.y, w: WING_W, h: LOW_H });
 }
 
 function deptRoom(id: string, x: number, y: number, island: string): Room {
@@ -276,33 +292,87 @@ export const ROOMS: Room[] = [...PROJECT_ROOMS, CEO_ROOM, HERMES_ROOM, MEETING_R
 
 // ── 출입구 광장 ─────────────────────────────────────────
 const PLAZA = { x: 66, y: LOW_Y + 22, w: 15, h: 8 };
-ISLANDS.push({ id: "plaza", name: "출입구", icon: "🚪", kind: "plaza", x: PLAZA.x, y: PLAZA.y, w: PLAZA.w, h: PLAZA.h });
+ISLANDS.push({ id: "plaza", name: "출입구", icon: "🚪", kind: "plaza", level: 0, x: PLAZA.x, y: PLAZA.y, w: PLAZA.w, h: PLAZA.h });
 export const ENTRANCE: Pt = { x: PLAZA.x + 7, y: PLAZA.y + PLAZA.h - 2 };
 
 // ── 다리 ────────────────────────────────────────────────
 const AVENUE_X0 = PROJECT_X0 + Math.floor(PROJECT_ISLAND_W / 2) - 1;
 const AVENUE_X1 = PROJECT_X0 + 5 * (PROJECT_ISLAND_W + PROJECT_GAP) + Math.floor(PROJECT_ISLAND_W / 2) + 1;
-BRIDGES.push({ from: { x: AVENUE_X0, y: AVENUE_N_Y }, to: { x: AVENUE_X1, y: AVENUE_N_Y }, width: 2, kind: "avenue" });
-BRIDGES.push({ from: { x: 8, y: AVENUE_S_Y }, to: { x: COLS - 9, y: AVENUE_S_Y }, width: 2, kind: "avenue" });
+BRIDGES.push({ from: { x: AVENUE_X0, y: AVENUE_N_Y }, to: { x: AVENUE_X1, y: AVENUE_N_Y }, width: 2, kind: "avenue", level: 1, h0: 0, h1: 0 });
+BRIDGES.push({ from: { x: 8, y: AVENUE_S_Y }, to: { x: COLS - 9, y: AVENUE_S_Y }, width: 2, kind: "avenue", level: 0, h0: 0, h1: 0 });
 // 프로젝트 섬 → 북 대로
 for (const island of ISLANDS.filter((i) => i.kind === "project")) {
   const cx = island.x + Math.floor(island.w / 2) - 1;
-  BRIDGES.push({ from: { x: cx, y: island.y + island.h }, to: { x: cx, y: AVENUE_N_Y - 1 }, width: 2, kind: "link" });
+  BRIDGES.push({ from: { x: cx, y: island.y + island.h }, to: { x: cx, y: AVENUE_N_Y - 1 }, width: 2, kind: "link", h0: 0, h1: 0 });
 }
 // 가운데 섬 ↔ 북·남 대로 (위·아래 두 곳)
 for (const island of ISLANDS.filter((i) => ["intake", "core", "wing"].includes(i.kind) && i.y === MID_Y)) {
   const cx = island.x + Math.floor(island.w / 2) - 1;
   const clampedX = Math.min(Math.max(cx, AVENUE_X0), AVENUE_X1 - 1);
-  BRIDGES.push({ from: { x: clampedX, y: AVENUE_N_Y + 2 }, to: { x: clampedX, y: island.y - 1 }, width: 2, kind: "link" });
-  BRIDGES.push({ from: { x: cx, y: island.y + island.h }, to: { x: cx, y: AVENUE_S_Y - 1 }, width: 2, kind: "link" });
+  BRIDGES.push({ from: { x: clampedX, y: AVENUE_N_Y + 2 }, to: { x: clampedX, y: island.y - 1 }, width: 2, kind: "link", h0: 0, h1: 0 });
+  BRIDGES.push({ from: { x: cx, y: island.y + island.h }, to: { x: cx, y: AVENUE_S_Y - 1 }, width: 2, kind: "link", h0: 0, h1: 0 });
 }
 // 아랫줄 섬 ↔ 남 대로
 for (const island of ISLANDS.filter((i) => i.kind === "wing" && i.y === LOW_Y)) {
   const cx = island.x + Math.floor(island.w / 2) - 1;
-  BRIDGES.push({ from: { x: cx, y: AVENUE_S_Y + 2 }, to: { x: cx, y: island.y - 1 }, width: 2, kind: "link" });
+  BRIDGES.push({ from: { x: cx, y: AVENUE_S_Y + 2 }, to: { x: cx, y: island.y - 1 }, width: 2, kind: "link", h0: 0, h1: 0 });
 }
 // 출입구 광장 ↔ 남 대로
-BRIDGES.push({ from: { x: PLAZA.x + 6, y: AVENUE_S_Y + 2 }, to: { x: PLAZA.x + 6, y: PLAZA.y - 1 }, width: 2, kind: "link" });
+BRIDGES.push({ from: { x: PLAZA.x + 6, y: AVENUE_S_Y + 2 }, to: { x: PLAZA.x + 6, y: PLAZA.y - 1 }, width: 2, kind: "link", h0: 0, h1: 0 });
+
+// ── 높이 ────────────────────────────────────────────────
+function islandAt(x: number, y: number): Island | null {
+  return ISLANDS.find((i) => x >= i.x && x < i.x + i.w && y >= i.y && y < i.y + i.h) ?? null;
+}
+function bridgeAt(x: number, y: number): Bridge | null {
+  for (const b of BRIDGES) {
+    const horizontal = b.from.y === b.to.y;
+    const x0 = Math.min(b.from.x, b.to.x);
+    const x1 = Math.max(b.from.x, b.to.x);
+    const y0 = Math.min(b.from.y, b.to.y);
+    const y1 = Math.max(b.from.y, b.to.y);
+    if (horizontal ? x >= x0 && x <= x1 && y >= b.from.y && y < b.from.y + b.width : y >= y0 && y <= y1 && x >= b.from.x && x < b.from.x + b.width) return b;
+  }
+  return null;
+}
+/** 다리 끝 바로 바깥 타일의 높이 (섬 또는 대로) */
+function endHeight(x: number, y: number): number {
+  const island = islandAt(x, y);
+  if (island) return island.level * LEVEL_H;
+  const bridge = bridgeAt(x, y);
+  if (bridge?.level !== undefined) return bridge.level * LEVEL_H;
+  return 0;
+}
+for (const b of BRIDGES) {
+  if (b.level !== undefined) {
+    b.h0 = b.h1 = b.level * LEVEL_H;
+    continue;
+  }
+  const horizontal = b.from.y === b.to.y;
+  const dir = horizontal ? Math.sign(b.to.x - b.from.x) || 1 : Math.sign(b.to.y - b.from.y) || 1;
+  b.h0 = endHeight(horizontal ? b.from.x - dir : b.from.x, horizontal ? b.from.y : b.from.y - dir);
+  b.h1 = endHeight(horizontal ? b.to.x + dir : b.to.x, horizontal ? b.to.y : b.to.y + dir);
+}
+
+/** 월드 좌표(연속)의 바닥 높이. 섬은 층 높이, 계단 다리는 양 끝 사이를 직선 보간, 허공은 0 */
+export function elevationAt(wx: number, wz: number): number {
+  const tx = Math.floor(wx);
+  const tz = Math.floor(wz);
+  const island = islandAt(tx, tz);
+  if (island) return island.level * LEVEL_H;
+  const b = bridgeAt(tx, tz);
+  if (!b) return 0;
+  if (b.h0 === b.h1) return b.h0;
+  const horizontal = b.from.y === b.to.y;
+  const start = horizontal ? b.from.x : b.from.y;
+  const end = horizontal ? b.to.x : b.to.y;
+  const pos = horizontal ? wx : wz;
+  // from 끝은 from 타일의 시작 모서리, to 끝은 to 타일의 끝 모서리
+  const a = end >= start ? start : start + 1;
+  const c = end >= start ? end + 1 : end;
+  const t = Math.min(1, Math.max(0, (pos - a) / (c - a)));
+  return b.h0 + (b.h1 - b.h0) * t;
+}
 
 export function projectSpot(projectId: string): Pt {
   const room = roomOf(projectId);

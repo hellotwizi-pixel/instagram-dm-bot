@@ -19,7 +19,9 @@ import {
   COLS,
   ENTRANCE,
   ISLANDS,
+  LEVEL_H,
   MEETING_ROOM,
+  elevationAt,
   MIMIR_CENTER,
   MIMIR_RADIUS,
   PROPS,
@@ -130,8 +132,9 @@ function buildIsland(island: Island, scene: THREE.Scene): void {
   if (tint) sideColor.lerp(tint, 0.1);
   const top = new THREE.MeshStandardMaterial({ color: topColor, roughness: 0.9 });
   const side = new THREE.MeshStandardMaterial({ color: sideColor, roughness: 0.95 });
+  const H = island.level * LEVEL_H;
   const slab = new THREE.Mesh(new THREE.BoxGeometry(island.w, 2.4, island.h), [side, side, top, side, side, side]);
-  slab.position.set(cx, -1.2, cz);
+  slab.position.set(cx, H - 1.2, cz);
   slab.receiveShadow = true;
   slab.castShadow = true;
   g.add(slab);
@@ -140,13 +143,13 @@ function buildIsland(island: Island, scene: THREE.Scene): void {
     new THREE.BoxGeometry(island.w - 2.5, 2.2, island.h - 2.5),
     new THREE.MeshStandardMaterial({ color: PALETTE.islandRock, roughness: 1 }),
   );
-  rock.position.set(cx, -3.4, cz);
+  rock.position.set(cx, H - 3.4, cz);
   g.add(rock);
   const rock2 = new THREE.Mesh(
     new THREE.BoxGeometry(island.w - 6, 1.6, island.h - 6),
     new THREE.MeshStandardMaterial({ color: 0x0e1220, roughness: 1 }),
   );
-  rock2.position.set(cx, -5.2, cz);
+  rock2.position.set(cx, H - 5.2, cz);
   g.add(rock2);
   // 테두리 빛
   const edgeColor = tint ? tint : new THREE.Color(PALETTE.corridorLine);
@@ -154,12 +157,12 @@ function buildIsland(island: Island, scene: THREE.Scene): void {
     new THREE.EdgesGeometry(new THREE.BoxGeometry(island.w, 0.02, island.h)),
     new THREE.LineBasicMaterial({ color: edgeColor, transparent: true, opacity: island.kind === "project" ? 0.55 : 0.28 }),
   );
-  edge.position.set(cx, 0.02, cz);
+  edge.position.set(cx, H + 0.02, cz);
   g.add(edge);
   // 이름표 (프로젝트 섬은 방 이름이 이미 있으므로 생략)
   if (island.kind !== "project") {
     const label = textSprite(`${island.icon} ${island.name}`, { bg: "rgba(13,19,34,.82)", color: "#dfe7f5", size: 26, border: "rgba(80,214,255,.5)" });
-    label.position.set(island.x + 3.2, 2.6, island.y + 0.9);
+    label.position.set(island.x + 3.2, H + 2.6, island.y + 0.9);
     label.scale.multiplyScalar(0.85);
     g.add(label);
   }
@@ -182,33 +185,62 @@ function buildBridge(bridge: Bridge, scene: THREE.Scene, plankMat: THREE.MeshSta
   mat.map = plankMat.map!.clone();
   mat.map.needsUpdate = true;
   mat.map.repeat.set(horizontal ? len / 2 : 1, horizontal ? 1 : len / 2);
-  const plank = new THREE.Mesh(new THREE.BoxGeometry(horizontal ? len : wide, 0.5, horizontal ? wide : len), mat);
-  plank.position.set(cx, -0.22, cz);
-  plank.receiveShadow = true;
-  plank.castShadow = true;
-  g.add(plank);
+  // 높이: from 쪽 끝 h0 → to 쪽 끝 h1. 진행 방향(+축이면 dir=1)
+  const dir = horizontal ? Math.sign(bridge.to.x - bridge.from.x) || 1 : Math.sign(bridge.to.y - bridge.from.y) || 1;
+  const hStart = dir > 0 ? bridge.h0 : bridge.h1; // 축 작은 쪽 끝의 높이
+  const hEnd = dir > 0 ? bridge.h1 : bridge.h0;
+  const dh = hEnd - hStart;
+  const stairs = Math.abs(dh) > 0.01;
+  const baseH = Math.min(hStart, hEnd);
+  const heightAt = (t: number) => hStart + dh * (t + 0.5); // t ∈ [-0.5, 0.5] (축 작은 쪽 → 큰 쪽)
+  if (!stairs) {
+    const plank = new THREE.Mesh(new THREE.BoxGeometry(horizontal ? len : wide, 0.5, horizontal ? wide : len), mat);
+    plank.position.set(cx, hStart - 0.22, cz);
+    plank.receiveShadow = true;
+    plank.castShadow = true;
+    g.add(plank);
+  } else {
+    // 계단: 디딤판 n개. 각 디딤판은 아래 바닥까지 꽉 찬 상자라 옆에서 보면 계단 모양
+    const n = Math.max(4, Math.round(len * 2));
+    const stepLen = len / n;
+    for (let i = 0; i < n; i += 1) {
+      const t = -0.5 + (i + 0.5) / n;
+      const top = heightAt(t);
+      const depth = top - baseH + 0.5;
+      const step = new THREE.Mesh(new THREE.BoxGeometry(horizontal ? stepLen + 0.02 : wide, depth, horizontal ? wide : stepLen + 0.02), mat);
+      step.position.set(horizontal ? cx + t * len : cx, top - depth / 2, horizontal ? cz : cz + t * len);
+      step.receiveShadow = true;
+      step.castShadow = true;
+      g.add(step);
+    }
+  }
   // 다리 밑 받침 (대로만)
   if (bridge.kind === "avenue") {
     const beam = new THREE.Mesh(new THREE.BoxGeometry(horizontal ? len : wide - 0.6, 0.6, horizontal ? wide - 0.6 : len), new THREE.MeshStandardMaterial({ color: PALETTE.islandSide, roughness: 1 }));
-    beam.position.set(cx, -0.75, cz);
+    beam.position.set(cx, hStart - 0.75, cz);
     g.add(beam);
   }
-  // 난간: 양쪽 가로대 + 기둥
+  // 난간: 양쪽 가로대(경사면 따라 기울임) + 기둥
   const railH = 0.85;
   const off = wide / 2 + 0.08;
+  const slopeLen = Math.hypot(len, dh);
+  const slope = Math.atan2(dh, len);
   for (const sgn of [-1, 1]) {
-    const rail = new THREE.Mesh(new THREE.BoxGeometry(horizontal ? len : 0.08, 0.08, horizontal ? 0.08 : len), railMat);
-    rail.position.set(horizontal ? cx : cx + sgn * off, railH, horizontal ? cz + sgn * off : cz);
+    const rail = new THREE.Mesh(new THREE.BoxGeometry(horizontal ? slopeLen : 0.08, 0.08, horizontal ? 0.08 : slopeLen), railMat);
+    rail.position.set(horizontal ? cx : cx + sgn * off, (hStart + hEnd) / 2 + railH, horizontal ? cz + sgn * off : cz);
+    if (horizontal) rail.rotation.z = slope;
+    else rail.rotation.x = -slope;
     rail.castShadow = true;
     g.add(rail);
     const rail2 = rail.clone();
-    rail2.position.y = railH * 0.5;
+    rail2.position.y = (hStart + hEnd) / 2 + railH * 0.5;
     g.add(rail2);
     const posts = Math.max(2, Math.round(len / 2.5));
     for (let i = 0; i <= posts; i += 1) {
-      const t = -len / 2 + 0.3 + (i * (len - 0.6)) / posts;
+      const t = -0.5 + (0.3 + (i * (len - 0.6)) / posts) / len;
+      const floorH = heightAt(t);
       const post = new THREE.Mesh(new THREE.BoxGeometry(0.12, railH, 0.12), railMat);
-      post.position.set(horizontal ? cx + t : cx + sgn * off, railH / 2, horizontal ? cz + sgn * off : cz + t);
+      post.position.set(horizontal ? cx + t * len : cx + sgn * off, floorH + railH / 2, horizontal ? cz + sgn * off : cz + t * len);
       g.add(post);
     }
   }
@@ -441,6 +473,7 @@ function buildRoom(room: Room, scene: THREE.Scene, mats: ReturnType<typeof makeM
   label.position.set(cx, WALL_H + 0.9, room.y + 0.6);
   label.scale.multiplyScalar(0.9);
   g.add(label);
+  g.position.y = elevationAt(room.x + 0.5, room.y + 0.5);
   scene.add(g);
   return { floor, frame };
 }
@@ -449,6 +482,7 @@ function buildProp(prop: Prop, scene: THREE.Scene, mats: ReturnType<typeof makeM
   const g = new THREE.Group();
   const cx = prop.x + prop.w / 2;
   const cz = prop.y + prop.h / 2;
+  g.position.y = elevationAt(prop.x + 0.5, prop.y + 0.5);
   if (kit && buildKitProp(prop, g, kit, mats)) {
     scene.add(g);
     return;
@@ -642,15 +676,17 @@ function buildDecor(scene: THREE.Scene, kit: Kit) {
   const g = new THREE.Group();
   const plaza = ISLANDS.find((i) => i.kind === "plaza");
   if (plaza) {
-    place(g, kit, "bench", plaza.x + 2.5, plaza.y + plaza.h - 1.5, { rotY: 0 });
-    place(g, kit, "bench", plaza.x + plaza.w - 2.5, plaza.y + plaza.h - 1.5, { rotY: 0 });
-    place(g, kit, "lampRoundFloor", plaza.x + 1, plaza.y + plaza.h - 1);
-    place(g, kit, "lampRoundFloor", plaza.x + plaza.w - 1, plaza.y + plaza.h - 1);
+    const y = plaza.level * LEVEL_H;
+    place(g, kit, "bench", plaza.x + 2.5, plaza.y + plaza.h - 1.5, { rotY: 0, y });
+    place(g, kit, "bench", plaza.x + plaza.w - 2.5, plaza.y + plaza.h - 1.5, { rotY: 0, y });
+    place(g, kit, "lampRoundFloor", plaza.x + 1, plaza.y + plaza.h - 1, { y });
+    place(g, kit, "lampRoundFloor", plaza.x + plaza.w - 1, plaza.y + plaza.h - 1, { y });
   }
   for (const island of ISLANDS) {
     if (island.kind === "project" || island.kind === "plaza") continue;
-    place(g, kit, "lampRoundFloor", island.x + 1, island.y + 1);
-    place(g, kit, "lampRoundFloor", island.x + island.w - 1, island.y + island.h - 1);
+    const y = island.level * LEVEL_H;
+    place(g, kit, "lampRoundFloor", island.x + 1, island.y + 1, { y });
+    place(g, kit, "lampRoundFloor", island.x + island.w - 1, island.y + island.h - 1, { y });
   }
   scene.add(g);
 }
@@ -658,7 +694,7 @@ function buildDecor(scene: THREE.Scene, kit: Kit) {
 /** 아크 리액터 — 하우징 링, 회전 스트럿, 코어, 빛 */
 function buildReactor(scene: THREE.Scene) {
   const g = new THREE.Group();
-  g.position.set(MIMIR_CENTER.x + 0.5, 0, MIMIR_CENTER.y + 0.5);
+  g.position.set(MIMIR_CENTER.x + 0.5, elevationAt(MIMIR_CENTER.x + 0.5, MIMIR_CENTER.y + 0.5), MIMIR_CENTER.y + 0.5);
   const r = MIMIR_RADIUS;
   const base = new THREE.Mesh(new THREE.CylinderGeometry(r + 0.4, r + 0.8, 0.5, 48), new THREE.MeshStandardMaterial({ color: 0x1b2230, roughness: 0.5, metalness: 0.6 }));
   base.position.y = 0.25;
@@ -840,10 +876,11 @@ export default function OfficeWorld({ engine, snap, selectedId, follow, onSelect
     const railMat = new THREE.MeshStandardMaterial({ color: PALETTE.rail, roughness: 0.5, metalness: 0.5 });
     for (const bridge of BRIDGES) buildBridge(bridge, scene, plankMat, railMat);
     // 출입구 매트
-    const mat = addBox(scene, 5, 0.06, 1.6, ENTRANCE.x + 1, 0.03, ENTRANCE.y - 0.6, new THREE.MeshStandardMaterial({ color: 0x1f6f8a, emissive: 0x50d6ff, emissiveIntensity: 0.25 }), false);
+    const entranceH = elevationAt(ENTRANCE.x + 0.5, ENTRANCE.y + 0.5);
+    const mat = addBox(scene, 5, 0.06, 1.6, ENTRANCE.x + 1, entranceH + 0.03, ENTRANCE.y - 0.6, new THREE.MeshStandardMaterial({ color: 0x1f6f8a, emissive: 0x50d6ff, emissiveIntensity: 0.25 }), false);
     mat.receiveShadow = false;
     const entranceLabel = textSprite("ENTRANCE", { bg: "rgba(13,19,34,.85)", color: "#50d6ff", size: 22, border: "#50d6ff" });
-    entranceLabel.position.set(ENTRANCE.x + 1, 1.2, ENTRANCE.y - 0.6);
+    entranceLabel.position.set(ENTRANCE.x + 1, entranceH + 1.2, ENTRANCE.y - 0.6);
     entranceLabel.scale.multiplyScalar(0.7);
     scene.add(entranceLabel);
 
@@ -886,6 +923,7 @@ export default function OfficeWorld({ engine, snap, selectedId, follow, onSelect
     const points = new THREE.Points(pGeo, new THREE.PointsMaterial({ size: 0.55, vertexColors: true, transparent: true, opacity: 0.9, depthWrite: false }));
     scene.add(points);
     const particles: { tx: number; tz: number; t: number; color: THREE.Color }[] = [];
+    const reactorH = elevationAt(MIMIR_CENTER.x + 0.5, MIMIR_CENTER.y + 0.5);
 
     // 클릭 → 직원 선택
     const raycaster = new THREE.Raycaster();
@@ -915,6 +953,8 @@ export default function OfficeWorld({ engine, snap, selectedId, follow, onSelect
     const ao = new GTAOPass(scene, camera, 1, 1);
     ao.output = GTAOPass.OUTPUT.Default;
     ao.updateGtaoMaterial({ radius: 1.6, distanceExponent: 1, thickness: 1, scale: 1, samples: 12, distanceFallOff: 1, screenSpaceRadius: false });
+    // GTAO 가 월드 원점 근처(0~2.5칸)에 검은 사각형 인공물을 만든다 (씬이 비어 있어도 생김). 그 영역을 AO 계산에서 뺀다
+    ao.setSceneClipBox(new THREE.Box3(new THREE.Vector3(3, -8, 2.5), new THREE.Vector3(COLS, 12, ROWS)));
     ao.updatePdMaterial({ lumaPhi: 10, depthPhi: 2, normalPhi: 3, radius: 4, radiusExponent: 1, rings: 2, samples: 16 });
     ao.blendIntensity = 0.7;
     if (new URLSearchParams(location.search).get("ao") !== "0") composer.addPass(ao);
@@ -939,7 +979,7 @@ export default function OfficeWorld({ engine, snap, selectedId, follow, onSelect
       probe.updateMatrixWorld();
       let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
       for (const [x, z] of [[0, 0], [COLS, 0], [0, ROWS], [COLS, ROWS]] as const)
-        for (const y of [-6.5, 3.5]) {
+        for (const y of [-6.5, 3.5 + 2 * LEVEL_H]) {
           const v = new THREE.Vector3(x, y, z).project(probe);
           minX = Math.min(minX, v.x); maxX = Math.max(maxX, v.x); minY = Math.min(minY, v.y); maxY = Math.max(maxY, v.y);
         }
@@ -978,7 +1018,7 @@ export default function OfficeWorld({ engine, snap, selectedId, follow, onSelect
       const s = snapRef.current;
 
       // 카메라: 가까이 + 자동 추적이면 초점으로 스르륵
-      if (debugFollow) {
+      if (debugFollow.length >= 1) {
         const a = engine.agentById.get(debugFollow[0]);
         if (a) controls.target.set(a.x + 0.5, 0, a.y + 0.5);
         camera.zoom = Number(debugFollow[1]) || 6;
@@ -1034,7 +1074,7 @@ export default function OfficeWorld({ engine, snap, selectedId, follow, onSelect
         const off = agent.status === "출근 전";
         av.group.visible = !off;
         if (off) continue;
-        av.group.position.set(agent.x + 0.5 + agent.jitter, 0, agent.y + 0.5);
+        av.group.position.set(agent.x + 0.5 + agent.jitter, elevationAt(agent.x + 0.5, agent.y + 0.5), agent.y + 0.5);
         // 최단 각도로 회전
         let delta = agent.heading - av.group.rotation.y;
         delta = Math.atan2(Math.sin(delta), Math.cos(delta));
@@ -1150,7 +1190,7 @@ export default function OfficeWorld({ engine, snap, selectedId, follow, onSelect
           }
           const e = p.t < 0.5 ? 2 * p.t * p.t : 1 - Math.pow(-2 * p.t + 2, 2) / 2;
           pPos[i * 3] = MIMIR_CENTER.x + 0.5 + (p.tx - MIMIR_CENTER.x - 0.5) * e;
-          pPos[i * 3 + 1] = 1.2 + Math.sin(p.t * Math.PI) * 6;
+          pPos[i * 3 + 1] = reactorH + 1.2 + Math.sin(p.t * Math.PI) * 6;
           pPos[i * 3 + 2] = MIMIR_CENTER.y + 0.5 + (p.tz - MIMIR_CENTER.y - 0.5) * e;
           pCol[i * 3] = p.color.r;
           pCol[i * 3 + 1] = p.color.g;
