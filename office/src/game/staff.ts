@@ -36,8 +36,10 @@ function make(
   callsign?: string,
 ): StaffSeed {
   const i = seq++;
+  // 팀장은 `<부서>-lead`, 팀원은 Hermes 프로필 id(callsign)를 그대로 id 로 쓴다
+  const id = rank === "lead" ? `${dept}-lead` : callsign ?? `${dept}-m${i}`;
   return {
-    id: `${dept}-${rank === "lead" ? "lead" : `m${i}`}`,
+    id,
     name,
     callsign,
     role,
@@ -69,6 +71,12 @@ export const STAFF: StaffSeed[] = STAFF_LIST.map((s) =>
   make(s.dept, s.rank, s.name, s.role, s.colors, s.thoughts, s.callsign),
 );
 
+/** Hermes 프로필 id(callsign) → 직원 */
+export const STAFF_BY_CALLSIGN: Record<string, StaffSeed> = Object.fromEntries(
+  STAFF.filter((s) => s.callsign).map((s) => [s.callsign as string, s]),
+);
+
+/** 부서별 팀장. 직원이 없는 부서(미미르)는 없을 수 있다 */
 export const DEPT_LEAD: Record<string, StaffSeed> = Object.fromEntries(
   STAFF.filter((s) => s.rank === "lead").map((s) => [s.deptId, s]),
 );
@@ -78,5 +86,10 @@ export const DEPT_BRIEF: Record<string, { task: string; report: string }> = Obje
   DEPARTMENTS.map((d) => [d.id, { task: d.task, report: d.report }]),
 );
 
-/** 아직 외부 연동이 안 붙은 부서 → 화면에 "연동 대기"로 표시 */
+/** Hermes group 이름 → 부서 id (실시간 연결용) */
+export const DEPT_BY_LIVE_GROUP: Record<string, string> = Object.fromEntries(
+  DEPARTMENTS.flatMap((d) => [d.name, ...d.liveGroups].map((g) => [g, d.id])),
+);
+
+/** 아직 외부 연결이 안 붙은 부서 → 화면에 "차단"으로 표시 */
 export const BLOCK_NEED: Record<string, string> = PENDING_INTEGRATIONS;

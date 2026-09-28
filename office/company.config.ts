@@ -1,42 +1,45 @@
 // ============================================================
-//  나의 AI 회사 설정 — 여기 한 파일만 고치면 됩니다
+//  나의 AI 회사 설정 — Hermes Desk 기준
 // ============================================================
-//  회사 이름, 부서 이름, 직원 이름·성격·머리색까지 전부 여기 있어요.
-//  다른 파일은 건드리지 않아도 됩니다.
+//  Hermes Desk(server.py LABELS · 보고체계 기준.md)의 부서·에이전트 프로필을
+//  그대로 옮겼습니다. 부서 이름은 Hermes의 group 이름과 같아야
+//  실시간 연결(LIVE) 시 작업 기록이 올바른 방에 붙습니다.
 //
 //  ⚠️ 딱 2가지 규칙
-//   1. 부서 id(research, brand, ...)는 절대 바꾸지 마세요. 시뮬레이션 엔진이
-//      이 id로 움직입니다. 바꾸면 캐릭터가 길을 잃어요.
-//      → 바꿔도 되는 건 name(부서 이름) · icon · short 입니다.
+//   1. 부서 id(dev, plan, ...)는 바꾸지 마세요. 시나리오 엔진이 이 id로 움직입니다.
+//      → 바꿔도 되는 건 name · icon · short · task · report 입니다.
 //   2. 부서는 12개를 유지하세요. 사무실 배치가 4열 3행 = 12칸 고정입니다.
-//      안 쓰는 부서는 지우지 말고 이름만 바꿔서 쓰세요.
 //
-//  직원 수는 자유롭게 늘리고 줄여도 됩니다. 한 팀에 팀장(lead) 1명은 두세요.
+//  직원은 자유롭게 늘리고 줄여도 됩니다(방 하나에 최대 12명).
+//  callsign 에는 Hermes 프로필 id(devpm, devcoder …)를 넣으세요.
+//  실시간 연결 시 작업의 assignee 와 이 callsign 으로 캐릭터를 찾습니다.
 // ============================================================
 
 /** 회사 기본 정보 */
 export const COMPANY = {
   /** 좌측 상단 헤더에 뜨는 회사 이름 */
-  name: "MY AI COMPANY",
-  /** 헤더 로고 배지에 들어갈 글자 1개 (이모지도 됩니다) */
-  logoLetter: "M",
+  name: "HERMES COMMAND SYSTEM",
+  /** 헤더 로고 배지에 들어갈 글자 1개 */
+  logoLetter: "H",
   /** 화면 상단 큰 제목 (앞부분) */
-  titlePrefix: "나의",
+  titlePrefix: "우리 팀은",
   /** 화면 상단 큰 제목 (강조되는 뒷부분) */
-  titleAccent: "AI Office",
+  titleAccent: "지금.",
+  /** 라이브 오피스 제목 아래 한 줄 */
+  tagline: "Slack에서 맡긴 일이 헤르메스를 거쳐 부서로 나뉘고, 미미르를 조회하고, 결과로 돌아옵니다.",
   /** 브라우저 탭 제목 */
-  pageTitle: "My AI Company — 나의 AI 사무실",
+  pageTitle: "Hermes Office — 우리 회사 AI 오피스",
   /** 검색·공유될 때 뜨는 설명 */
-  description: "12개 AI 팀이 조사·기획·제작·보고까지 돌아가는 1인 크리에이터용 AI 오피스",
-  /** 창 하단 파일명 느낌의 라벨 */
-  windowLabel: "my_ai_company.exe — 대표실",
+  description: "헤르메스가 업무를 나누고 미미르가 기억하는, 우리 회사 AI 에이전트 픽셀 오피스",
+  /** 대시보드 창 상단 라벨 */
+  windowLabel: "hermes_desk.exe — 관제실",
   /** 일일 브리핑 제목에 들어갈 이름 */
-  reportName: "AI Office",
+  reportName: "Hermes Office",
 } as const;
 
-/** 대표(나) — 사무실 대표실에 앉아 있는 캐릭터 */
+/** 대표(나) — 대표실에 앉아 있는 캐릭터 */
 export const CEO_PROFILE = {
-  name: "김대표",
+  name: "대표",
   callsign: "대표님",
   role: "대표 · 최종 의사결정",
   hair: "#42283a",
@@ -44,118 +47,47 @@ export const CEO_PROFILE = {
   accent: "#fff3b0",
   skin: "#ffdcc4",
   thoughts: [
-    "AI는 비서, 최종 결정은 내가 해요.",
-    "오늘 결정할 건 딱 1개만 남기자.",
-    "저장될 만한 콘텐츠인지부터 본다.",
+    "AI는 실행, 결정은 내가 해요.",
+    "막힌 이유를 먼저 본다.",
+    "완료와 보고 전달은 다른 일이다.",
   ],
 };
 
 /**
- * 부서 12개.
+ * 부서 12개 — Hermes Desk LABELS 의 group 과 1:1.
  * id = 고정(엔진용) / name·short·icon = 자유롭게 변경
  * task = 오늘 하는 일 / report = 팀장 한줄보고
+ * liveGroups = 실시간 연결 시 이 방으로 묶을 Hermes group 이름들
  */
 export const DEPARTMENTS = [
-  {
-    id: "research",
-    name: "시장조사팀",
-    short: "trend.lab",
-    icon: "🔎",
-    task: "업계 뉴스·트렌드 수집",
-    report: "출처를 검증하고 오늘의 후보를 정리해요.",
-  },
-  {
-    id: "brand",
-    name: "브랜드 분석팀",
-    short: "brand.room",
-    icon: "🧬",
-    task: "채널 흐름·정체성 점검",
-    report: "지표 연동이 되면 수치까지 붙습니다.",
-  },
-  {
-    id: "strategy1",
-    name: "기획 1팀",
-    short: "idea.studio",
-    icon: "💡",
-    task: "오늘의 아이디어 10개",
-    report: "점수 기준으로 TOP 3까지 좁혀요.",
-  },
-  {
-    id: "qa",
-    name: "품질 검수팀",
-    short: "qa.check",
-    icon: "🛡️",
-    task: "근거·중복·톤 검사",
-    report: "기준에서 벗어난 안은 되돌려보내요.",
-  },
-  {
-    id: "strategy2",
-    name: "기획 2팀",
-    short: "script.team",
-    icon: "✍️",
-    task: "승인된 안 원고 작성",
-    report: "대표가 고른 아이디어만 글로 옮겨요.",
-  },
-  {
-    id: "reels",
-    name: "영상 제작팀",
-    short: "video.edit",
-    icon: "🎬",
-    task: "영상 원본 접수·초안 편집",
-    report: "원본은 보존하고 편집본만 새로 만들어요.",
-  },
-  {
-    id: "carousel",
-    name: "이미지 제작팀",
-    short: "design.studio",
-    icon: "🖼️",
-    task: "카드·썸네일 디자인",
-    report: "필요한 장수만 만들고 CTA로 닫아요.",
-  },
-  {
-    id: "partner",
-    name: "제휴 커뮤니케이션팀",
-    short: "partner.mail",
-    icon: "💌",
-    task: "협업 문의 검토·답장 초안",
-    report: "초안까지만 씁니다. 발송은 대표가 해요.",
-  },
-  {
-    id: "finance",
-    name: "재무·정산팀",
-    short: "finance.xls",
-    icon: "🧾",
-    task: "수익·입금 현황 정리",
-    report: "현황 파일이 오면 바로 정리합니다.",
-  },
-  {
-    id: "review",
-    name: "성과리뷰팀",
-    short: "review.data",
-    icon: "📈",
-    task: "성과·학습점 기록",
-    report: "잘된 이유를 패턴으로 남겨요.",
-  },
-  {
-    id: "ops",
-    name: "자동화 운영팀",
-    short: "automation.ops",
-    icon: "⚙️",
-    task: "연동·실패·재시도 관리",
-    report: "실패하면 재시도하고 로그를 남겨요.",
-  },
-  {
-    id: "secretary",
-    name: "비서실",
-    short: "secretary.hq",
-    icon: "📋",
-    task: "전사 한줄보고·최종 브리핑",
-    report: "모든 팀 상태를 모아 결정할 것만 남겨드려요.",
-  },
+  { id: "dev", name: "개발팀", short: "dev.team", icon: "💻", liveGroups: ["개발팀"],
+    task: "오류 원인 조사 · 기능 구현 · 검수 · QA", report: "재현 → 원인 → 수정 → 테스트 순서로 끝냈어요." },
+  { id: "plan", name: "기획팀", short: "plan.team", icon: "🧭", liveGroups: ["기획팀"],
+    task: "요청을 기능 목록·작업 단위로 분해", report: "큰 일을 작은 작업으로 나눠 순서를 정했어요." },
+  { id: "design", name: "디자인팀", short: "design.team", icon: "🎨", liveGroups: ["디자인팀"],
+    task: "화면 흐름·버튼·색·글자 정리", report: "사용 흐름을 정리하고 화면 시안을 냈어요." },
+  { id: "mkt", name: "마케팅팀", short: "mkt.team", icon: "📣", liveGroups: ["마케팅팀"],
+    task: "소개글·게시물 초안 · 제목·문구 제안", report: "초안까지만 씁니다. 게시는 대표가 해요." },
+  { id: "ad", name: "광고팀", short: "ad.team", icon: "📊", liveGroups: ["광고팀"],
+    task: "광고 성과 분류 · 예산 배분 · 소재 검토", report: "광고 계정이 연결되면 성과표부터 읽어요." },
+  { id: "ops", name: "운영팀", short: "ops.team", icon: "🗂️", liveGroups: ["운영팀"],
+    task: "조사·자료 정리 · 안내서·FAQ 작성", report: "출처를 붙여 정리하고 미미르에 남겨요." },
+  { id: "legal", name: "법무팀", short: "legal.team", icon: "⚖️", liveGroups: ["법무팀"],
+    task: "계약서·NDA 조항 검토", report: "불리한 조항과 빠진 조건을 표로 정리해요." },
+  { id: "sec", name: "보안팀", short: "sec.team", icon: "🛡️", liveGroups: ["보안팀"],
+    task: "코드·설정 보안 점검 · 권한 누락 검토", report: "전문 자동 검사는 도구 연결 뒤에 돌려요." },
+  { id: "aios", name: "AI-OS 관리", short: "aios.ops", icon: "🛰️", liveGroups: ["AI-OS 관리"],
+    task: "에이전트·스킬 점검 · 멈춘 작업 원인 조사", report: "끊어진 연결과 중복 기능을 정리했어요." },
+  { id: "pm", name: "프로젝트", short: "project.pm", icon: "🪐", liveGroups: ["프로젝트"],
+    task: "프로젝트별 요청 접수 · 결과 확인", report: "행성 → 부서 → 요청 → 결과 순서로 챙겨요." },
+  { id: "mimir", name: "미미르", short: "mimir.memory", icon: "🧠", liveGroups: [],
+    task: "회사 기억 · 데이터 원천 누적", report: "저장된 자료와 결정사항을 조회해 드려요." },
+  { id: "hermes", name: "헤르메스", short: "hermes.hq", icon: "⚡", liveGroups: ["헤르메스", "공통", "기타"],
+    task: "Slack 요청 접수 · 업무 분담 · 결과 회수·보고", report: "누가 맡았고 어디까지 됐는지 한 줄로 남겨요." },
 ] as const;
 
 /**
- * 직원 명단.
+ * 직원 명단 — Hermes 프로필 id 를 callsign 으로.
  * dept = 위 부서 id / rank: "lead"(팀장) 또는 "member"(팀원)
  * colors = [머리색, 옷색, 포인트색]
  * thoughts = 자리를 비웠을 때 머리 위에 뜨는 혼잣말
@@ -171,176 +103,225 @@ export type StaffEntry = {
 };
 
 export const STAFF_LIST: StaffEntry[] = [
-  // ① 시장조사팀
-  { dept: "research", rank: "lead", name: "김서연", role: "시장조사 팀장", callsign: "김리서",
-    colors: ["#6b3d34", "#fff3b0", "#ff8fc0"],
-    thoughts: ["이 기사, 공식 출처가 있나 확인해야 해.", "발표일이 7일 넘었으면 후보에서 빼자.", "원문부터 다시 본다."] },
-  { dept: "research", rank: "member", name: "오태윤", role: "뉴스 리서처",
-    colors: ["#2f2a3d", "#c9b8ff", "#b8f0dd"],
-    thoughts: ["신규 업로드인데 반응 0이면 인기 아님.", "우리나라에서 되는 기능인지 체크."] },
-  { dept: "research", rank: "member", name: "하은채", role: "동향 조사",
-    colors: ["#8a4a3c", "#b8f0dd", "#ff8fc0"],
-    thoughts: ["이번 주 사람들이 뭘 저장했지?", "재포장 기사는 원문으로 안 쳐요."] },
+  // 개발팀
+  { dept: "dev", rank: "lead", name: "개발PM", callsign: "devpm", role: "업무 접수·분담·검수 조율",
+    colors: ["#2f2a3d", "#c9b8ff", "#b8f0dd"], thoughts: ["재현부터 하고 고친다.", "검수 없이 완료라고 안 해요."] },
+  { dept: "dev", rank: "member", name: "코더", callsign: "devcoder", role: "기능 구현·수정·리팩터링",
+    colors: ["#6b3d34", "#b8f0dd", "#ff8fc0"], thoughts: ["테스트 먼저 쓰고 구현.", "이 함수, 이름부터 바꾸자."] },
+  { dept: "dev", rank: "member", name: "리뷰어", callsign: "devreview", role: "코드 품질·요구사항·보안 검토",
+    colors: ["#463227", "#fff3b0", "#c9b8ff"], thoughts: ["요구사항이랑 다르면 되돌려요.", "비밀값이 코드에 있는지 본다."] },
+  { dept: "dev", rank: "member", name: "QA", callsign: "devqa", role: "실행 검증·시나리오 테스트·버그 재현",
+    colors: ["#2d4b46", "#ffe6f2", "#b8f0dd"], thoughts: ["실기기에서 한 번 더.", "재현 안 되면 완료 아니에요."] },
 
-  // ② 브랜드 분석팀
-  { dept: "brand", rank: "lead", name: "박보라", role: "브랜드 분석 팀장", callsign: "박브리",
-    colors: ["#372b4a", "#c9b8ff", "#c9b8ff"],
-    thoughts: ["지표 연동 전엔 수치를 지어내지 않아요.", "우리 색깔에서 벗어난 각도인지 본다."] },
-  { dept: "brand", rank: "member", name: "신재원", role: "채널 지표 분석",
-    colors: ["#3c3a4f", "#ffe6f2", "#c9b8ff"],
-    thoughts: ["저장률이 도달보다 중요해요.", "30일 흐름부터 그려보자."] },
-  { dept: "brand", rank: "member", name: "임다혜", role: "정체성 검증",
-    colors: ["#5a3450", "#fff3b0", "#ff8fc0"],
-    thoughts: ["우리가 안 쓰기로 한 프레임이에요.", "타겟이 흐려지면 다시 잡아요."] },
+  // 기획팀
+  { dept: "plan", rank: "lead", name: "기획PM", callsign: "planpm", role: "기획 접수·범위 정리",
+    colors: ["#c26e4b", "#ff8fc0", "#fff3b0"], thoughts: ["범위부터 자르자.", "해결할 문제가 뭐였지?"] },
+  { dept: "plan", rank: "member", name: "프로덕트", callsign: "planproduct", role: "제품 방향·우선순위·성공 기준",
+    colors: ["#7b4a2f", "#b8f0dd", "#ff8fc0"], thoughts: ["성공 기준 없는 기능은 보류.", "최소 기능으로 먼저 검증."] },
+  { dept: "plan", rank: "member", name: "스펙", callsign: "planspec", role: "요구사항·작업 분해·구현 순서",
+    colors: ["#2c2638", "#fff3b0", "#c9b8ff"], thoughts: ["미미르에 비슷한 결정 있었나?", "작업 단위는 반나절 이하로."] },
 
-  // ③ 기획 1팀
-  { dept: "strategy1", rank: "lead", name: "최아름", role: "기획 1팀장", callsign: "최아이",
-    colors: ["#c26e4b", "#ff8fc0", "#fff3b0"],
-    thoughts: ["오늘도 정확히 10개, 예외 없어요.", "기준 점수부터 채우고 시작.", "각도가 겹치면 프레임을 바꾼다."] },
-  { dept: "strategy1", rank: "member", name: "정유진", role: "아이디어 발굴",
-    colors: ["#7b4a2f", "#b8f0dd", "#ff8fc0"],
-    thoughts: ["제목을 좀 더 구체적으로 바꿔볼까.", "오늘 행동 1개가 빠졌다."] },
-  { dept: "strategy1", rank: "member", name: "배시현", role: "후킹 카피",
-    colors: ["#2c2638", "#fff3b0", "#c9b8ff"],
-    thoughts: ["훅 3초 안에 안 걸리면 다시 써요.", "단정형으로 닫자, 권유형 금지."] },
+  // 디자인팀
+  { dept: "design", rank: "lead", name: "디자인PM", callsign: "designpm", role: "디자인 업무 조율",
+    colors: ["#5a3450", "#c9b8ff", "#ff8fc0"], thoughts: ["흐름 먼저, 색은 나중.", "모바일부터 본다."] },
+  { dept: "design", rank: "member", name: "UX", callsign: "designux", role: "사용자 여정·화면 흐름·접근성",
+    colors: ["#372b4a", "#ffe6f2", "#c9b8ff"], thoughts: ["헷갈리는 단계가 어디지?", "버튼 하나 줄이자."] },
+  { dept: "design", rank: "member", name: "브랜드", callsign: "designbrand", role: "브랜드 방향·톤·비주얼 체계",
+    colors: ["#9c5c72", "#fff3b0", "#ff8fc0"], thoughts: ["글꼴 체계부터 정리.", "우리 톤에서 벗어났어요."] },
 
-  // ④ 품질 검수팀
-  { dept: "qa", rank: "lead", name: "윤규아", role: "품질 검수 팀장", callsign: "윤큐아",
-    colors: ["#2d4b46", "#b8f0dd", "#b8f0dd"],
-    thoughts: ["금칙어 스캔 돌립니다.", "근거 링크 없는 안은 반려예요."] },
-  { dept: "qa", rank: "member", name: "강태오", role: "중복·근거 검사",
-    colors: ["#463227", "#ffe6f2", "#b8f0dd"],
-    thoughts: ["최근 7일 안에 40% 겹쳤네.", "바로 써먹을 실물이 있는지 확인."] },
-  { dept: "qa", rank: "member", name: "문세라", role: "톤 검수",
-    colors: ["#6c3a55", "#c9b8ff", "#fff3b0"],
-    thoughts: ["과장된 표현은 바로 빼요.", "우리 톤 유지하는지 본다."] },
+  // 마케팅팀
+  { dept: "mkt", rank: "lead", name: "마케팅PM", callsign: "mktpm", role: "콘텐츠 업무 조율",
+    colors: ["#8b534a", "#fff3b0", "#ff8fc0"], thoughts: ["고객별 핵심 메시지 하나씩.", "초안까지만, 게시는 대표가."] },
+  { dept: "mkt", rank: "member", name: "라이터", callsign: "mktwriter", role: "콘텐츠 초안 작성",
+    colors: ["#33304a", "#ff8fc0", "#b8f0dd"], thoughts: ["첫 문장에서 걸려야 해.", "긴 자료를 세 줄로."] },
+  { dept: "mkt", rank: "member", name: "SEO", callsign: "mktseo", role: "키워드·검색 최적화",
+    colors: ["#5d3a2c", "#b8f0dd", "#c9b8ff"], thoughts: ["검색어부터 다시 본다.", "제목에 키워드 하나만."] },
+  { dept: "mkt", rank: "member", name: "에디터", callsign: "mktedit", role: "구조 편집·문장 다듬기",
+    colors: ["#3a2f4d", "#ffe6f2", "#fff3b0"], thoughts: ["어색한 문장 걷어내는 중.", "결론을 앞으로."] },
 
-  // ⑤ 기획 2팀
-  { dept: "strategy2", rank: "lead", name: "한도빈", role: "원고 팀장", callsign: "한대본",
-    colors: ["#8b534a", "#fff3b0", "#ff8fc0"],
-    thoughts: ["승인된 안만 원고로 씁니다.", "결론은 하나로 닫아야 해요."] },
-  { dept: "strategy2", rank: "member", name: "조민서", role: "영상 대본",
-    colors: ["#33304a", "#ff8fc0", "#b8f0dd"],
-    thoughts: ["구조부터 잡고 들어간다.", "30초 안에 끝나야 해요."] },
-  { dept: "strategy2", rank: "member", name: "백가온", role: "카드 원고",
-    colors: ["#5d3a2c", "#b8f0dd", "#c9b8ff"],
-    thoughts: ["3장에서 원인을 다시 정의합니다.", "마지막 장은 댓글 유도로."] },
+  // 광고팀
+  { dept: "ad", rank: "lead", name: "광고PM", callsign: "adpm", role: "광고 업무 조율",
+    colors: ["#313b56", "#fff3b0", "#fff3b0"], thoughts: ["성과표가 와야 시작해요.", "계정 연결 전엔 숫자 안 만듭니다."] },
+  { dept: "ad", rank: "member", name: "구글광고", callsign: "adgoogle", role: "Google 광고 계정·전환 점검",
+    colors: ["#4b3b2c", "#b8f0dd", "#c9b8ff"], thoughts: ["전환 태그부터 확인.", "계정 권한 대기 중."] },
+  { dept: "ad", rank: "member", name: "메타광고", callsign: "admeta", role: "Meta 광고 계정·타겟 점검",
+    colors: ["#2e3a4a", "#ffe6f2", "#b8f0dd"], thoughts: ["타겟 겹침 확인.", "픽셀 이벤트 확인 필요."] },
+  { dept: "ad", rank: "member", name: "예산분석", callsign: "adbudget", role: "예산·입찰·성과 분석",
+    colors: ["#6b4a2f", "#c9b8ff", "#fff3b0"], thoughts: ["과다 소진 항목부터.", "광고비 대비 성과 비교."] },
+  { dept: "ad", rank: "member", name: "소재검토", callsign: "adcreative", role: "소재 품질·성과 신호 검토",
+    colors: ["#573049", "#fff3b0", "#ff8fc0"], thoughts: ["이미지 3안 비교.", "영상 첫 3초."] },
+  { dept: "ad", rank: "member", name: "카피", callsign: "adcopy", role: "광고 문구 작성",
+    colors: ["#7a3f58", "#c9b8ff", "#ff8fc0"], thoughts: ["문구 다섯 안.", "단정형으로 닫자."] },
+  { dept: "ad", rank: "member", name: "정책검토", callsign: "adpolicy", role: "정책·심사 위험 점검",
+    colors: ["#274a44", "#b8f0dd", "#b8f0dd"], thoughts: ["심사 반려 위험 체크.", "금칙 표현 스캔."] },
 
-  // ⑥ 영상 제작팀
-  { dept: "reels", rank: "lead", name: "송리원", role: "영상 제작 팀장", callsign: "송릴스",
-    colors: ["#2c2638", "#ff8fc0", "#ff8fc0"],
-    thoughts: ["원본은 절대 안 건드려요.", "무음 컷부터 치고 시작."] },
-  { dept: "reels", rank: "member", name: "권지호", role: "편집",
-    colors: ["#4a3a2a", "#fff3b0", "#b8f0dd"],
-    thoughts: ["컷 템포가 늘어지면 이탈이에요.", "도입부는 대표가 직접 넣어요."] },
-  { dept: "reels", rank: "member", name: "유세아", role: "자막·썸네일",
-    colors: ["#7a3f58", "#c9b8ff", "#ff8fc0"],
-    thoughts: ["썸네일 5종 뽑아둘게요.", "워터마크는 안 넣습니다."] },
+  // 운영팀
+  { dept: "ops", rank: "lead", name: "운영PM", callsign: "oppm", role: "운영 업무 조율",
+    colors: ["#3b3b49", "#b8f0dd", "#b8f0dd"], thoughts: ["자료 취합부터.", "인수인계 문서 남기자."] },
+  { dept: "ops", rank: "member", name: "문서", callsign: "opdoc", role: "안내문·기술 문서 작성",
+    colors: ["#334a3a", "#ffe6f2", "#fff3b0"], thoughts: ["직원용 안내서 초안.", "FAQ 다섯 개."] },
+  { dept: "ops", rank: "member", name: "큐레이터", callsign: "opcurator", role: "자료 정리·지식 관리",
+    colors: ["#7a453c", "#c9b8ff", "#c9b8ff"], thoughts: ["미미르에 정리해서 넣자.", "중복 자료 합치는 중."] },
+  { dept: "ops", rank: "member", name: "리서치", callsign: "opresearch", role: "조사·근거 수집·비교 분석",
+    colors: ["#8a4a3c", "#b8f0dd", "#ff8fc0"], thoughts: ["출처 없는 건 안 써요.", "경쟁사 비교표."] },
 
-  // ⑦ 이미지 제작팀
-  { dept: "carousel", rank: "lead", name: "이가림", role: "이미지 제작 팀장", callsign: "이캐리",
-    colors: ["#d88d68", "#c9b8ff", "#c9b8ff"],
-    thoughts: ["원본 템플릿은 복제만, 수정 금지.", "필요한 장수만 뽑아요."] },
-  { dept: "carousel", rank: "member", name: "남주하", role: "레이아웃",
-    colors: ["#3a2f4d", "#ffe6f2", "#ff8fc0"],
-    thoughts: ["글자 밀도 맞추는 중.", "표지 3안부터 만들자."] },
-  { dept: "carousel", rank: "member", name: "표하늘", role: "텍스트 교체",
-    colors: ["#274a44", "#fff3b0", "#b8f0dd"],
-    thoughts: ["마지막 장 CTA 빠지면 반려예요.", "복제본에만 손댑니다."] },
+  // 법무팀
+  { dept: "legal", rank: "lead", name: "법무PM", callsign: "legalpm", role: "법무 업무 조율",
+    colors: ["#563a32", "#b8f0dd", "#b8f0dd"], thoughts: ["검토할 계약서가 오면 시작.", "위험도 순서로."] },
+  { dept: "legal", rank: "member", name: "계약검토", callsign: "legalcontract", role: "계약 검토·협상 지원",
+    colors: ["#452d3f", "#c9b8ff", "#fff3b0"], thoughts: ["불리한 조항 표시 중.", "만료일 정리."] },
+  { dept: "legal", rank: "member", name: "법률자문", callsign: "legalteam", role: "법률 문서·자문 지원",
+    colors: ["#3c3a4f", "#ffe6f2", "#c9b8ff"], thoughts: ["NDA 주의사항 정리.", "회사 기준과 비교."] },
 
-  // ⑧ 제휴 커뮤니케이션팀
-  { dept: "partner", rank: "lead", name: "정파랑", role: "제휴 팀장", callsign: "정파트",
-    colors: ["#563a32", "#b8f0dd", "#b8f0dd"],
-    thoughts: ["메일 연동 전이라 아직 못 읽어요.", "실제 발송은 대표 손으로."] },
-  { dept: "partner", rank: "member", name: "구예성", role: "협업 검토",
-    colors: ["#452d3f", "#c9b8ff", "#fff3b0"],
-    thoughts: ["결이 맞는 제안만 받습니다.", "답장 초안까지만 준비해둘게요."] },
+  // 보안팀
+  { dept: "sec", rank: "lead", name: "보안PM", callsign: "secpm", role: "보안 업무 조율",
+    colors: ["#2d4b46", "#b8f0dd", "#b8f0dd"], thoughts: ["점검 항목부터 정리.", "도구 연결 확인 필요."] },
+  { dept: "sec", rank: "member", name: "침해대응", callsign: "secteam", role: "침해 대응·포렌식 지원",
+    colors: ["#463227", "#ffe6f2", "#b8f0dd"], thoughts: ["로그부터 보존.", "영향 범위 먼저."] },
+  { dept: "sec", rank: "member", name: "취약점검토", callsign: "secsec", role: "취약점·코드 보안 검토",
+    colors: ["#6c3a55", "#c9b8ff", "#fff3b0"], thoughts: ["비밀정보 노출 검사.", "권한 누락 체크."] },
 
-  // ⑨ 재무·정산팀
-  { dept: "finance", rank: "lead", name: "오재민", role: "재무 팀장", callsign: "오재무",
-    colors: ["#313b56", "#fff3b0", "#fff3b0"],
-    thoughts: ["현황 파일이 오면 바로 정리합니다.", "입금 대기 건부터 확인해요."] },
-  { dept: "finance", rank: "member", name: "심우진", role: "정산 관리",
-    colors: ["#4b3b2c", "#b8f0dd", "#c9b8ff"],
-    thoughts: ["지연된 건은 따로 표시해둡니다.", "결제는 자동으로 안 해요."] },
+  // AI-OS 관리
+  { dept: "aios", rank: "lead", name: "AI-OS PM", callsign: "aiospm", role: "에이전트 운영 업무 조율",
+    colors: ["#372b4a", "#c9b8ff", "#c9b8ff"], thoughts: ["멈춘 작업 원인부터.", "깨진 스킬 연결 정리."] },
+  { dept: "aios", rank: "member", name: "운영배포", callsign: "aiosops", role: "운영·배포·권한 관리",
+    colors: ["#3b3b49", "#b8f0dd", "#b8f0dd"], thoughts: ["실행 신호 3분 없으면 확인.", "권한 변경은 대표 승인 뒤."] },
+  { dept: "aios", rank: "member", name: "운영분석", callsign: "aiosanalyst", role: "운영 분석",
+    colors: ["#2e3a4a", "#ffe6f2", "#b8f0dd"], thoughts: ["보고 누락 원인 조사.", "중복 기능 목록."] },
+  { dept: "aios", rank: "member", name: "전략", callsign: "aiosstrat", role: "도입·운영 전략",
+    colors: ["#5d3a2c", "#fff3b0", "#c9b8ff"], thoughts: ["새 도구 비교표.", "도입 효과 vs 유지비."] },
 
-  // ⑩ 성과리뷰팀
-  { dept: "review", rank: "lead", name: "강성아", role: "성과리뷰 팀장", callsign: "강성과",
-    colors: ["#9c5c72", "#ff8fc0", "#ff8fc0"],
-    thoughts: ["잘된 이유를 패턴으로 남겨야 해요.", "저장·댓글이 진짜 지표입니다."] },
-  { dept: "review", rank: "member", name: "마지훈", role: "지표 수집",
-    colors: ["#2e3a4a", "#ffe6f2", "#b8f0dd"],
-    thoughts: ["도달·저장·공유 다시 긁어옵니다.", "연동되면 자동화돼요."] },
-  { dept: "review", rank: "member", name: "여름", role: "학습점 정리",
-    colors: ["#6b4a2f", "#c9b8ff", "#fff3b0"],
-    thoughts: ["반복할 패턴 1개, 중단할 패턴 1개.", "다음 기획팀에 넘길 학습점 정리 중."] },
+  // 프로젝트 담당 (행성별 PM)
+  { dept: "pm", rank: "lead", name: "DMmate", callsign: "replypm", role: "DMmate 담당",
+    colors: ["#313b56", "#c9b8ff", "#b8f0dd"], thoughts: ["댓글 → DM 흐름 확인.", "메시지를 잇는 우체국."] },
+  { dept: "pm", rank: "member", name: "ACE골프", callsign: "acepm", role: "ACE 인도어골프 담당",
+    colors: ["#2d4b46", "#b8f0dd", "#fff3b0"], thoughts: ["그린 클럽하우스 예약 현황.", "현장 사진 판독 결과 확인."] },
+  { dept: "pm", rank: "member", name: "바베큐", callsign: "bbqpm", role: "바베큐국립공원 담당",
+    colors: ["#8b534a", "#fff3b0", "#ff8fc0"], thoughts: ["숲속 캠프 시즌 준비.", "인스타 실적 확인."] },
+  { dept: "pm", rank: "member", name: "하하팩토리", callsign: "hahapm", role: "하하팩토리 담당",
+    colors: ["#c26e4b", "#ff8fc0", "#fff3b0"], thoughts: ["아이디어 작업장 정리.", "제작 일정 확인."] },
+  { dept: "pm", rank: "member", name: "디토크", callsign: "ditalkpm", role: "디토크 담당",
+    colors: ["#9c5c72", "#ffe6f2", "#c9b8ff"], thoughts: ["이야기가 모이는 스튜디오.", "회의 요약 확인."] },
+  { dept: "pm", rank: "member", name: "AI Council", callsign: "councilpm", role: "AI Council 담당",
+    colors: ["#372b4a", "#c9b8ff", "#b8f0dd"], thoughts: ["회의 기록 → 할 일.", "화자별 발언 정리."] },
+  { dept: "pm", rank: "member", name: "리워드", callsign: "rewardpm", role: "리워드드로우 담당",
+    colors: ["#6b4a2f", "#b8f0dd", "#ff8fc0"], thoughts: ["추첨 규칙 확인.", "참여 데이터 정리."] },
+  { dept: "pm", rank: "member", name: "보드", callsign: "boardpm", role: "Planning Board 담당",
+    colors: ["#33304a", "#fff3b0", "#c9b8ff"], thoughts: ["보드 카드 정리.", "결정사항 미미르에."] },
+  { dept: "pm", rank: "member", name: "바로열기", callsign: "openitpm", role: "바로열기 담당",
+    colors: ["#463227", "#ffe6f2", "#b8f0dd"], thoughts: ["변환 프로세스 점검.", "ngrok 상태 확인."] },
 
-  // ⑪ 자동화 운영팀
-  { dept: "ops", rank: "lead", name: "안도현", role: "자동화 운영 팀장", callsign: "안오토",
-    colors: ["#3b3b49", "#b8f0dd", "#b8f0dd"],
-    thoughts: ["오전 스케줄 정상입니다.", "실패하면 재시도하고 로그 남겨요."] },
-  { dept: "ops", rank: "member", name: "천유나", role: "연동 모니터링",
-    colors: ["#573049", "#fff3b0", "#ff8fc0"],
-    thoughts: ["연결 안 된 서비스를 성공으로 안 씁니다.", "연동 대기 중이에요."] },
-
-  // ⑫ 비서실
-  { dept: "secretary", rank: "lead", name: "김세리", role: "비서실장", callsign: "김비서",
-    colors: ["#7a453c", "#c9b8ff", "#c9b8ff"],
-    thoughts: ["대표가 결정할 것만 추립니다.", "중복 설명은 다 지워요."] },
-  { dept: "secretary", rank: "member", name: "홍보람", role: "브리핑 정리",
-    colors: ["#334a3a", "#ffe6f2", "#fff3b0"],
-    thoughts: ["상태별로 묶어서 올릴게요.", "막힌 건 먼저 보고해요."] },
+  // 헤르메스 (접수·분담·보고) + 공통·검토 프로필
+  { dept: "hermes", rank: "lead", name: "헤르메스", callsign: "hermes", role: "요청 접수·업무 분담·결과 회수·보고",
+    colors: ["#2b1c26", "#fff3b0", "#ff8fc0"], thoughts: ["누가 맡았고 어디까지 됐는지.", "막힌 이유는 사용자 언어로.", "완료와 보고 전달은 다른 일."] },
+  { dept: "hermes", rank: "member", name: "공통", callsign: "default", role: "기본 프로필 · 요약·번역·표 정리",
+    colors: ["#3c3a4f", "#ffe6f2", "#c9b8ff"], thoughts: ["긴 글 요약 중.", "적합한 부서 제안."] },
+  { dept: "hermes", rank: "member", name: "검토", callsign: "reviewer", role: "검토 프로필 · 누락·모순 탐지",
+    colors: ["#5a3450", "#c9b8ff", "#fff3b0"], thoughts: ["기준과 비교 중.", "추가 확인 질문 정리."] },
 ];
 
 /**
- * 외부 연동을 아직 안 붙인 팀 → 화면에 "연동 대기"로 표시됩니다.
- * 연동을 다 붙였거나, 그냥 전부 초록불로 보고 싶으면 빈 배열 []로 두세요.
+ * 외부 연결이 아직 안 된 부서 → 화면에 "차단"으로 표시됩니다.
+ * (Hermes Desk: 광고팀 "데이터 필요", 보안팀 "전문 도구 연결 검증 필요")
+ * 다 연결됐거나 전부 초록불로 보고 싶으면 빈 객체 {} 로 두세요.
  */
 export const PENDING_INTEGRATIONS: Record<string, string> = {
-  brand: "채널 지표 연동",
-  partner: "메일 연동",
-  finance: "재무 현황 파일",
+  ad: "Google·Meta 광고 계정 + 성과표 연결",
+  sec: "보안 자동 검사 도구 연결",
+};
+
+/** 차단 부서가 멈춰 있는 진짜 이유 (지시창에서 "왜 늦어져?"에 답할 때) */
+export const BLOCK_REASONS: Record<string, string> = {
+  ad: "광고 계정과 성과표가 아직 연결되지 않아 숫자를 읽을 수 없어요. 없는 성과를 만들지는 않습니다. 연결만 되면 바로 분류합니다.",
+  sec: "전문 자동 검사 도구가 연결되지 않았어요. 점검 항목 정리는 해두었고, 도구가 붙으면 실제 검사를 돌립니다.",
 };
 
 /**
- * 결과 보관함 링크 (Notion 등). 비워두면 화면에서 링크 버튼이 숨겨집니다.
- * 예: "https://www.notion.so/내페이지주소"
+ * 오늘의 시나리오 — Slack에서 들어온 요청 1건.
+ * 라이브 오피스 시나리오(접수 → 분담 → 미미르 조회 → 검토 차단 → 대표 확인 → 완료)에 그대로 쓰입니다.
  */
-export const STORAGE_LINK = "";
-
-/**
- * 대표 승인 회의에 올라오는 오늘의 TOP 1 안건.
- * 승인 카드(ceo.approval)와 회의 대사에 그대로 표시됩니다.
- */
-export const PROPOSAL = {
-  title: "AI 회사가 매일 아침 나 대신 출근한다면?",
-  score: 92,
-  tag: "AI 회사 구축기",
-  summary: "지금 만들고 있는 시스템 자체를 날것의 성장기로 공개하는 크리에이터 아이덴티티 콘텐츠예요.",
-  reasons: ["① 실제 구축 과정", "② 저장할 운영 구조", "③ 날것의 시행착오"],
+export const REQUEST = {
+  /** 요청이 들어온 프로젝트 (프로젝트 담당 PM 의 callsign) */
+  project: "DMmate",
+  projectPm: "replypm",
+  channel: "#dmmate",
+  requester: "대표",
+  /** 요청 한 줄 */
+  text: "댓글 키워드별로 다른 DM 답장을 보내는 화면을 만들어줘",
+  /** 헤르메스가 나눈 세부 업무 */
+  tasks: {
+    plan: "요청을 기능 목록·작업 단위로 분해",
+    design: "키워드별 답장 설정 화면 시안",
+    dev: "키워드 분기 로직 구현·검수",
+    qa: "실기기 시나리오 테스트",
+    mkt: "새 기능 안내 문구 초안",
+    ops: "사용 안내서·FAQ 정리",
+    aios: "실행 기록·보고 경로 점검",
+  },
 };
 
 /**
- * 대시보드 integrations.link 창에 표시할 외부 연동 목록.
- * 이 껍데기에는 실제 연동이 없으므로 전부 "미설정"으로 표시됩니다.
+ * 검토 중 막힌 안건 — 대표가 결정해야 다음으로 넘어갑니다.
+ * ceo.approval 카드와 회의 대사에 그대로 표시됩니다.
+ */
+export const DECISION = {
+  tag: "검토 차단",
+  title: "Instagram API 발송 권한을 새 화면에 허용할까요?",
+  summary: "리뷰어가 검토 중 막았어요. 새 화면이 실제 DM 발송 권한을 쓰게 되므로 대표 확인 없이는 진행하지 않습니다.",
+  reasons: ["① 실제 DM 발송 권한 사용", "② 키워드 오탐 시 잘못된 답장 위험", "③ 승인 후 QA에서 실기기 검증"],
+  approveLabel: "권한 허용 · 계속 진행",
+};
+
+/**
+ * 대시보드 integrations.link 창에 표시할 연결 목록.
+ * 이 껍데기에는 실제 연결이 없으므로 전부 "미설정"으로 표시됩니다.
  * 연결 안 된 걸 연결됐다고 표시하지 않는 것이 원칙입니다.
  */
 export const INTEGRATIONS: Record<string, { configured: boolean; label: string; need?: string }> = {
-  instagram: { configured: false, label: "Instagram", need: "Meta 비즈니스 앱 + 장기 액세스 토큰" },
-  gmail: { configured: false, label: "Gmail", need: "Google OAuth 클라이언트 + 리프레시 토큰" },
-  finance: { configured: false, label: "재무 파일", need: "대표가 현황 파일 업로드" },
+  slack: { configured: false, label: "Slack 요청·보고", need: "Hermes gateway profile_routes" },
+  mimir: { configured: false, label: "미미르 기억", need: "~/.company-memory/ledger.db" },
+  kanban: { configured: false, label: "작업 보드", need: "~/.hermes/kanban.db" },
+  ad: { configured: false, label: "광고 계정", need: "Google·Meta 광고 계정 + 성과표" },
 };
+
+/** 미미르가 모으는 데이터 원천 (Hermes Desk ecosystem.py SOURCES) — 미미르 방 상세와 대시보드에 표시 */
+export const MIMIR_SOURCES = [
+  "Gmail", "Google Drive", "문서·글자 추출", "현장 사진 판독", "Google 캘린더", "인스타 실적", "사이트 실적", "카카오톡",
+  "Slack", "AI Council", "Claude Code", "ChatGPT / GPT", "텔레그램·터미널", "에이전트 작업", "프로젝트 지식", "직접 넣은 자료",
+];
+
+/** 결과물 창고에 보여줄 최근 결과 (파일은 실제 등록된 것만 넣으세요) */
+export const RESULTS: { title: string; dept: string; status: string; href?: string }[] = [
+  { title: "게시물별 키워드 분기 기능", dept: "dev", status: "최종 완료" },
+  { title: "Meta 앱 심사 요청 자료", dept: "ops", status: "최종 완료" },
+];
 
 /**
  * 완료 보고를 받을 서버 주소. 비워두면 발행 버튼이 "미설정"으로 동작하고
  * 보고서 본문은 브라우저 콘솔에만 남습니다.
- * 채우면 보고서 JSON을 이 주소로 POST 합니다 (예: "/api/report").
+ * 채우면 보고서 JSON을 이 주소로 POST 합니다.
  */
 export const REPORT_ENDPOINT = "";
 
-/** 화면 맨 아래 크레딧. 원본 UI는 갓생맘(@godseng.mom)이 만들어 배포한 것입니다. */
+/**
+ * 실시간 연결 — Hermes Desk(server.py)의 /api/operations 를 읽어 실제 작업 기록으로 캐릭터를 움직입니다.
+ * 개발 서버에서만 동작합니다: `HERMES_DESK_URL=http://127.0.0.1:64729 npm run dev`
+ * (vite.config.ts 가 /hermes 경로를 그 주소로 중계하고 Origin 을 맞춰 줍니다)
+ * 연결이 없으면 시나리오 모드로 동작합니다.
+ */
+export const LIVE = {
+  /** 중계 경로 — vite.config.ts 와 같아야 합니다 */
+  base: "/hermes",
+  /** 조회 간격(ms). Hermes Desk 자체는 3초 갱신 */
+  pollMs: 3000,
+};
+
+/** 결과 보관함 링크 (Notion 등). 비워두면 화면에서 링크 버튼이 숨겨집니다. */
+export const STORAGE_LINK = "";
+
+/** 화면 맨 아래 크레딧. 픽셀 오피스 원본 UI는 갓생맘(@godseng.mom)이 만들어 배포한 것입니다. */
 export const FOOTER = {
-  line1: "이 오피스의 원본 UI는 갓생맘 🎀이 만들었어요",
+  line1: "픽셀 오피스 원본 UI는 갓생맘 🎀이 만들었어요 · 부서·흐름은 Hermes Desk 기준",
   linkLabel: "📷 @godseng.mom — 더 많은 크리에이터 툴 보러가기 →",
   linkHref: "https://www.instagram.com/godseng.mom/",
   line3: "© godseng.mom · 자유롭게 쓰되 무단 재판매 금지",

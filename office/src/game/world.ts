@@ -1,11 +1,11 @@
 // 오피스 월드 맵
 // 타일 그리드 기반. 0 = 걸을 수 있음, 1 = 막힘(벽·가구)
 
-import { DEPARTMENTS } from "../../company.config";
+import { DEPARTMENTS, STAFF_LIST } from "../../company.config";
 
 export const TILE = 18;
 export const COLS = 74;
-export const ROWS = 58;
+export const ROWS = 60;
 export const WORLD_W = COLS * TILE;
 export const WORLD_H = ROWS * TILE;
 
@@ -38,24 +38,40 @@ export type Room = {
 
 /** 부서 방 배치 — 4열 3행 */
 const COL_X = [2, 20, 38, 56];
-const ROW_Y = [17, 31, 45];
+const ROW_Y = [16, 30, 44];
 const DEPT_W = 15;
-const DEPT_H = 11;
+const DEPT_H = 13;
+/** 책상 한 줄에 4개, 최대 3줄 = 방 하나에 12명 */
+const DESK_COLS = [1, 4, 7, 10];
+const DESK_ROWS = [3, 6, 9];
 
 // 부서 이름·아이콘은 company.config.ts 에서 가져옵니다.
 const DEPT_LAYOUT: { id: string; name: string; short: string; icon: string }[] = DEPARTMENTS.map(
   (d) => ({ id: d.id, name: d.name, short: d.short, icon: d.icon }),
 );
 
+/** 부서별 인원 → 필요한 책상 줄 수 */
+function deskRowsFor(deptId: string) {
+  const n = STAFF_LIST.filter((s) => s.dept === deptId).length;
+  return Math.min(DESK_ROWS.length, Math.ceil(n / DESK_COLS.length));
+}
+
 function deptRoom(index: number): Room {
   const meta = DEPT_LAYOUT[index];
   const x = COL_X[index % 4];
   const y = ROW_Y[Math.floor(index / 4)];
-  const desks: Desk[] = [3, 7, 11].map((dx) => ({
-    deskX: x + dx - 1,
-    deskY: y + 5,
-    seat: { x: x + dx, y: y + 6 },
-  }));
+  const rows = deskRowsFor(meta.id);
+  const desks: Desk[] = [];
+  for (let r = 0; r < rows; r += 1) {
+    for (const dx of DESK_COLS) {
+      desks.push({ deskX: x + dx, deskY: y + DESK_ROWS[r], seat: { x: x + dx + 1, y: y + DESK_ROWS[r] + 1 } });
+    }
+  }
+  // 책상이 없는 줄은 서성일 수 있는 빈 바닥
+  const loiter: Pt[] = [{ x: x + 13, y: y + 5 }, { x: x + 13, y: y + 8 }, { x: x + 5, y: y + 11 }, { x: x + 9, y: y + 11 }];
+  for (let r = rows; r < DESK_ROWS.length; r += 1) {
+    loiter.push({ x: x + 3, y: y + DESK_ROWS[r] }, { x: x + 9, y: y + DESK_ROWS[r] });
+  }
   return {
     ...meta,
     kind: "dept",
@@ -68,12 +84,7 @@ function deptRoom(index: number): Room {
       { x: x + 8, y },
     ],
     desks,
-    loiter: [
-      { x: x + 1, y: y + 8 },
-      { x: x + 5, y: y + 8 },
-      { x: x + 9, y: y + 8 },
-      { x: x + 13, y: y + 3 },
-    ],
+    loiter,
   };
 }
 
@@ -81,7 +92,7 @@ export const CEO_ROOM: Room = {
   id: "ceo",
   name: "대표실",
   short: "ceo.office",
-  icon: "🎀",
+  icon: "👑",
   kind: "ceo",
   x: 2,
   y: 2,
@@ -102,7 +113,7 @@ export const CEO_ROOM: Room = {
 
 export const MEETING_ROOM: Room = {
   id: "meeting",
-  name: "대표 승인 회의실",
+  name: "분담·검토 회의실",
   short: "meeting.hall",
   icon: "💬",
   kind: "meeting",
@@ -162,10 +173,15 @@ export const MEETING_SEATS: Pt[] = [
 export const CEO_REPORT_SPOT: Pt = { x: 11, y: 9 };
 export const CEO_SEAT: Pt = { x: 11, y: 5 };
 /** 출입구 (출근·퇴근) */
-export const ENTRANCE: Pt = { x: 36, y: 57 };
+export const ENTRANCE: Pt = { x: 36, y: ROWS - 1 };
 
 export const DEPT_ROOMS: Room[] = DEPT_LAYOUT.map((_, i) => deptRoom(i));
 export const ROOMS: Room[] = [CEO_ROOM, MEETING_ROOM, LOUNGE_ROOM, ...DEPT_ROOMS];
+
+/** 미미르(회사 기억) 방 — 직원 대신 서버 랙과 조회 단말이 있다 */
+export const MIMIR_ROOM = DEPT_ROOMS.find((r) => r.id === "mimir") ?? null;
+/** 미미르 조회 위치 (단말 앞) */
+export const MIMIR_SPOT: Pt = MIMIR_ROOM ? { x: MIMIR_ROOM.x + 7, y: MIMIR_ROOM.y + 7 } : ENTRANCE;
 
 export type Prop = {
   kind:
@@ -180,7 +196,9 @@ export type Prop = {
     | "ceo-desk"
     | "rug"
     | "cabinet"
-    | "whiteboard";
+    | "whiteboard"
+    | "rack"
+    | "brain";
   x: number;
   y: number;
   w: number;
@@ -192,12 +210,22 @@ export type Prop = {
 export const PROPS: Prop[] = [];
 
 for (const room of DEPT_ROOMS) {
+  if (room.id === "mimir") {
+    // 서버 랙 두 줄 + 가운데 조회 단말(뇌)
+    PROPS.push({ kind: "rack", x: room.x + 1, y: room.y + 2, w: 4, h: 1 });
+    PROPS.push({ kind: "rack", x: room.x + 10, y: room.y + 2, w: 4, h: 1 });
+    PROPS.push({ kind: "rack", x: room.x + 1, y: room.y + 10, w: 4, h: 1 });
+    PROPS.push({ kind: "rack", x: room.x + 10, y: room.y + 10, w: 4, h: 1 });
+    PROPS.push({ kind: "brain", x: room.x + 6, y: room.y + 4, w: 3, h: 3, label: "MIMIR" });
+    PROPS.push({ kind: "screen", x: room.x + 5, y: room.y + 8, w: 5, h: 1, label: "MEMORY" });
+    continue;
+  }
   for (const desk of room.desks) {
     PROPS.push({ kind: "desk", x: desk.deskX, y: desk.deskY, w: 3, h: 1 });
   }
   PROPS.push({ kind: "shelf", x: room.x + 1, y: room.y + 1, w: 3, h: 1 });
   PROPS.push({ kind: "plant", x: room.x + 13, y: room.y + 1, w: 1, h: 1 });
-  PROPS.push({ kind: "cabinet", x: room.x + 12, y: room.y + 8, w: 2, h: 1 });
+  if (room.desks.length <= 8) PROPS.push({ kind: "cabinet", x: room.x + 11, y: room.y + 11, w: 2, h: 1 });
 }
 
 PROPS.push({ kind: "ceo-desk", x: 9, y: 6, w: 5, h: 2 });
@@ -206,7 +234,7 @@ PROPS.push({ kind: "plant", x: 4, y: 4, w: 1, h: 1 });
 PROPS.push({ kind: "plant", x: 17, y: 4, w: 1, h: 1 });
 
 PROPS.push({ kind: "table", x: 31, y: 6, w: 10, h: 3 });
-PROPS.push({ kind: "screen", x: 28, y: 3, w: 5, h: 1, label: "TOP 3" });
+PROPS.push({ kind: "screen", x: 28, y: 3, w: 5, h: 1, label: "SLACK" });
 PROPS.push({ kind: "whiteboard", x: 42, y: 3, w: 5, h: 1 });
 PROPS.push({ kind: "plant", x: 25, y: 11, w: 1, h: 1 });
 PROPS.push({ kind: "plant", x: 46, y: 11, w: 1, h: 1 });

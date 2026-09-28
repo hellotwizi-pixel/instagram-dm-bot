@@ -1,24 +1,52 @@
-# 나의 AI Office (껍데기)
+# Hermes Office — 우리 회사 AI 오피스 (껍데기)
 
-AI 직원들이 출근하고, 자리에 앉아 일하고, 회의실에 모이고, 대표실로 보고하러 오는 **픽셀 사무실 UI**입니다.
-원본(갓생맘 AI Office)의 화면을 그대로 옮기되, 서버·외부 연동·Cloudflare 의존성을 전부 걷어낸 **순수 프론트엔드 껍데기**예요.
+AI 에이전트들이 출근하고, 자리에 앉아 일하고, 회의실에 모이고, 대표실로 보고하러 오는 **픽셀 사무실 UI**입니다.
+화면은 갓생맘 AI Office 의 픽셀 오피스를 그대로 옮겼고, **부서·에이전트·업무 흐름·상태 용어는 Hermes Desk(미미르 대시보드) 기준**으로 다시 짰습니다.
 
-- Vite + React + TypeScript 만 사용 (Next.js / vinext / Wrangler / Drizzle / Tailwind 없음)
+- Vite + React + TypeScript 만 사용 (Next.js / Cloudflare / Python 서버 없음)
 - 정적 파일로 빌드되므로 Vercel·GitHub Pages·아무 정적 호스팅에 올릴 수 있어요
-- 연동은 하나도 없고, 화면에는 정직하게 **"미설정"** 으로 표시됩니다
+- 기본은 **시나리오 모드**. 개발 서버에서 Hermes Desk 주소를 주면 **실시간 모드**로 실제 작업 기록을 반영합니다
 
 ## 실행
 
 ```bash
 cd office
 npm install
-npm run dev        # http://localhost:3000
+npm run dev        # http://localhost:3000  (시나리오 모드)
 ```
 
 ```bash
 npm run build      # 타입체크 + dist/ 생성
 npm run preview    # 빌드 결과 미리보기
 ```
+
+### 실시간 모드 — Hermes Desk 기록으로 움직이기
+
+Hermes Desk(`server.py`)가 떠 있는 Mac에서:
+
+```bash
+HERMES_DESK_URL=http://127.0.0.1:64729 npm run dev
+```
+
+- Hermes Desk 는 CORS 헤더가 없고 Origin·Host 를 자기 주소로만 허용하므로, 개발 서버가 `/hermes/*` 를 그 주소로 중계하면서 헤더를 맞춥니다 (`vite.config.ts`).
+- `/api/connect` 로 토큰을 받고 `/api/operations` 를 3초마다 읽습니다. 읽기만 하고, Hermes 에 명령을 보내지 않습니다.
+- 작업(`tasks`)의 `group` 이 부서 방으로, `assignee`(프로필 id)가 캐릭터로 붙습니다. `assigned/spawned` 이벤트가 오면 헤르메스가 그 방으로 걸어가고, `completed` 면 결과를 회수하러 갑니다.
+- 상태는 Hermes 범례 그대로: ● 작업 중 ◆ 확인 필요 ■ 차단 ○ 대기 + 완료. **진행률·성공은 만들지 않습니다.** 연결이 끊기면 마지막 상태를 남기고 "연결 확인 필요"로 표시합니다.
+- 배포 빌드에는 중계가 없으므로 실시간 모드는 로컬 개발 서버에서만 동작합니다.
+
+## Hermes 구조가 어떻게 들어갔나
+
+| Hermes Desk | 픽셀 오피스 |
+|---|---|
+| `LABELS` 의 부서 9개 (개발·기획·디자인·마케팅·광고·운영·법무·보안·AI-OS 관리) | 부서 방 9개 |
+| 프로젝트 담당 PM 9명 (DMmate, ACE 인도어골프, 바베큐국립공원, 하하팩토리, 디토크, AI Council, 리워드드로우, Planning Board, 바로열기) | `프로젝트` 방 |
+| 미미르 (회사 기억, 원천 16종) | `미미르` 방 — 서버 랙과 뇌 단말. 직원이 조회하러 걸어감 |
+| 헤르메스 (요청 접수·분담·결과 회수) + `default`·`reviewer` 프로필 | `헤르메스` 방 — 지시창 답변자, 배달부 |
+| 에이전트 프로필 47개 (`devpm`, `devcoder`, …) | 직원 47명, `callsign` = 프로필 id |
+| 작업 상태 `todo/running/blocked/done…` | 작업 중 / 확인 필요 / 차단 / 대기 / 완료 |
+| 흐름 체험 (요청 → 부서 배정 → 미미르 조회 → 검토 중 막힘 → 다시 진행 → 완료) | 하루 시나리오 12단계 |
+
+시나리오는 `#dmmate` 요청 1건이 들어와서 기획 → 미미르 조회 → 디자인·개발 → **검토 차단(대표 확인)** → QA → 마케팅·운영·AI-OS → 결과 회수 → 헤르메스 보고 순서로 흐릅니다. 광고팀·보안팀은 외부 연결 전이라 "차단"으로 표시됩니다.
 
 ## 내 회사로 바꾸기
 
@@ -28,38 +56,39 @@ npm run preview    # 빌드 결과 미리보기
 |---|---|
 | 회사 이름, 로고 글자, 화면 제목 | `COMPANY` |
 | 대표(나) 이름·성격·머리색 | `CEO_PROFILE` |
-| 부서 12개 이름·아이콘·하는 일 | `DEPARTMENTS` |
-| 직원 이름·직책·색·혼잣말 | `STAFF_LIST` |
-| "연동 대기"로 표시할 팀 | `PENDING_INTEGRATIONS` |
-| 대표 승인에 올라오는 오늘의 안건 | `PROPOSAL` |
-| 대시보드 연동 목록 | `INTEGRATIONS` |
+| 부서 12개 이름·아이콘·하는 일·Hermes group 매핑 | `DEPARTMENTS` |
+| 직원(에이전트) 이름·역할·색·혼잣말·프로필 id | `STAFF_LIST` |
+| "차단"으로 표시할 부서와 이유 | `PENDING_INTEGRATIONS`, `BLOCK_REASONS` |
+| 오늘의 Slack 요청과 세부 업무 | `REQUEST` |
+| 검토 차단 안건 (대표 확인) | `DECISION` |
+| 대시보드 연결 목록 | `INTEGRATIONS` |
+| 미미르 데이터 원천 목록 | `MIMIR_SOURCES` |
+| 결과 보관함 항목 | `RESULTS` |
 | 보고서를 받을 서버 주소 (선택) | `REPORT_ENDPOINT` |
-| 결과물 보관함 링크 | `STORAGE_LINK` |
+| 실시간 중계 경로·조회 간격 | `LIVE` |
 | 화면 하단 크레딧 | `FOOTER` |
-
-직원 수·이름·비서실장 이름은 자유롭게 바꿔도 화면 문구(직원 N명, 지시창 발신자, 승인 회의 참석자)가 따라옵니다.
 
 ### 지켜야 할 것 2가지
 
-1. **부서 `id`는 바꾸지 마세요** (`research`, `brand`, `strategy1`, `qa`, `strategy2`, `reels`, `carousel`, `partner`, `finance`, `review`, `ops`, `secretary`).
-   시뮬레이션 시나리오(`src/game/sim.ts`)가 이 id로 캐릭터를 움직입니다. `name` · `icon` · `short` · `task` · `report` 는 자유입니다.
-2. **부서는 12개를 유지하세요.** 사무실 배치가 4열 3행 고정입니다. 안 쓰는 부서는 이름만 바꿔 쓰세요.
+1. **부서 `id`는 바꾸지 마세요** (`dev plan design mkt ad ops legal sec aios pm mimir hermes`).
+   시나리오(`src/game/sim.ts`)가 이 id로 캐릭터를 움직입니다. `name · icon · short · task · report · liveGroups` 는 자유입니다.
+2. **부서는 12개를 유지하세요.** 사무실 배치가 4열 3행 고정입니다. 방 하나에 직원은 최대 12명(책상 4×3줄)입니다.
 
 ## 구조
 
 ```
 office/
 ├── company.config.ts     ← 여기만 고치면 됨
-├── index.html
+├── vite.config.ts        ← HERMES_DESK_URL 중계
 ├── src/
-│   ├── main.tsx
 │   ├── App.tsx           ← 라이브 오피스 / 대시보드 화면
-│   ├── styles/           ← globals.css, office.css (원본 그대로)
+│   ├── styles/           ← globals.css, office.css
 │   └── game/
-│       ├── sim.ts        ← 하루 시나리오 + 직원 상태머신
-│       ├── world.ts      ← 타일 맵, 방, 가구
+│       ├── sim.ts        ← 시나리오 + 직원 상태머신 + 실시간 반영(applyLive)
+│       ├── live.ts       ← Hermes Desk 연결 (토큰 → 3초 조회)
+│       ├── world.ts      ← 타일 맵, 방, 책상(인원수에 맞춰 1~3줄), 미미르 방
 │       ├── pathfinding.ts
-│       ├── staff.ts      ← config → 직원 데이터
+│       ├── staff.ts      ← config → 직원 데이터, 프로필 id 색인
 │       ├── report.ts     ← 보고서 생성 (서버 없으면 콘솔 출력)
 │       └── OfficeWorld.tsx ← 카메라·스프라이트 렌더링
 └── public/favicon.svg
@@ -68,17 +97,8 @@ office/
 ## 보고 발행 붙이기 (선택)
 
 `REPORT_ENDPOINT` 에 URL을 넣으면 "📤 보고 발행" 버튼이 그 주소로 보고서 JSON을 POST 합니다.
-응답은 아래 형태를 기대합니다.
-
-```json
-{
-  "notion":  { "ok": true, "status": "sent", "url": "https://..." },
-  "discord": { "ok": true, "status": "sent" },
-  "publishedAt": "2026-01-01T00:00:00.000Z"
-}
-```
-
-비워두면 발행 버튼은 "미설정"으로 동작하고 보고서 본문은 브라우저 콘솔에만 남습니다.
+응답은 `{ notion: {ok, status, url?}, discord: {ok, status}, publishedAt }` 형태를 기대합니다.
+비워두면 "미설정"으로 동작하고 보고서 본문은 브라우저 콘솔에만 남습니다.
 
 ## Vercel 배포
 
@@ -87,4 +107,5 @@ Root Directory 를 `office` 로 지정하면 `office/vercel.json` 설정으로 �
 
 ## 크레딧
 
-원본 UI·시뮬레이션은 갓생맘 🎀 (@godseng.mom) 이 만들어 배포한 것입니다. 자유롭게 쓰되 무단 재판매는 금지입니다.
+픽셀 오피스 UI·엔진 원본은 갓생맘 🎀 (@godseng.mom) 이 만들어 배포한 것입니다. 자유롭게 쓰되 무단 재판매는 금지입니다.
+부서·에이전트·보고 원칙은 Hermes Desk(`보고체계 기준.md`)를 따랐습니다.

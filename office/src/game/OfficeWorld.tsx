@@ -1,7 +1,7 @@
 "use client";
 
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
-import type { Agent, Company, DeptStatus, Snapshot } from "./sim";
+import { REPORT_PHASE, type Agent, type Company, type DeptStatus, type Snapshot } from "./sim";
 import {
   CEO_ROOM,
   ENTRANCE,
@@ -16,9 +16,9 @@ import {
 
 const STATUS_CLASS: Record<DeptStatus, string> = {
   "완료": "done",
-  "진행 중": "working",
-  "승인 대기": "approval",
-  "연동 대기": "blocked",
+  "작업 중": "working",
+  "확인 필요": "approval",
+  "차단": "blocked",
   "대기": "waiting",
 };
 
@@ -79,6 +79,7 @@ const AgentLayer = memo(function AgentLayer({
             {agent.name}
             {agent.rank === "lead" ? <em>팀장</em> : null}
             {agent.rank === "ceo" ? <em>대표</em> : null}
+            {agent.callsign && agent.rank !== "ceo" ? <small>{agent.callsign}</small> : null}
           </span>
         </div>
       ))}
@@ -101,12 +102,13 @@ const PropLayer = memo(function PropLayer() {
           }}
         >
           {prop.kind === "desk" ? <i className="pr-monitor" /> : null}
+          {prop.kind === "brain" ? <i className="pr-brain-core" /> : null}
           {prop.label ? <span>{prop.label}</span> : null}
         </div>
       ))}
       <div
         className="entrance-mat"
-        style={{ left: 34 * TILE, top: 55 * TILE, width: 5 * TILE, height: 2 * TILE }}
+        style={{ left: (ENTRANCE.x - 2) * TILE, top: (ENTRANCE.y - 2) * TILE, width: 5 * TILE, height: 2 * TILE }}
       >
         ENTRANCE
       </div>
@@ -131,10 +133,10 @@ export default function OfficeWorld({ engine, snap, selectedId, follow, onSelect
   const hotRoom = useMemo(() => {
     if (snap.spotlight) return snap.spotlight; // 대표 지시로 지목된 방 우선
     if (snap.meetingTitle) return MEETING_ROOM.id;
-    if (snap.phaseIndex >= 11) return CEO_ROOM.id;
-    const working = Object.entries(snap.deptStatus).find(([, status]) => status === "진행 중");
+    if (!snap.live.on && snap.phaseIndex >= REPORT_PHASE) return CEO_ROOM.id;
+    const working = Object.entries(snap.deptStatus).find(([, status]) => status === "작업 중");
     return working?.[0] ?? null;
-  }, [snap.spotlight, snap.meetingTitle, snap.phaseIndex, snap.deptStatus]);
+  }, [snap.spotlight, snap.meetingTitle, snap.phaseIndex, snap.deptStatus, snap.live.on]);
 
   /** 카메라가 비출 지점 — 회의실 > 대표실 > 작업 중인 부서 > 출근 시 입구 */
   const focus = useMemo(() => {
@@ -142,9 +144,9 @@ export default function OfficeWorld({ engine, snap, selectedId, follow, onSelect
       const room = roomOf(hotRoom);
       return { x: (room.x + room.w / 2) * TILE, y: (room.y + room.h / 2) * TILE };
     }
-    if (snap.phaseIndex <= 1) return { x: ENTRANCE.x * TILE, y: (ENTRANCE.y - 6) * TILE };
+    if (!snap.live.on && snap.phaseIndex <= 1) return { x: ENTRANCE.x * TILE, y: (ENTRANCE.y - 6) * TILE };
     return null;
-  }, [hotRoom, snap.phaseIndex]);
+  }, [hotRoom, snap.phaseIndex, snap.live.on]);
 
   const register = useCallback((id: string, el: HTMLDivElement | null) => {
     if (el) agentRefs.current.set(id, el);
@@ -214,7 +216,8 @@ export default function OfficeWorld({ engine, snap, selectedId, follow, onSelect
           const cls =
             `ag f-${agent.facing} a-${agent.anim} r-${agent.rank}` +
             (agent.id === picked ? " selected" : "") +
-            (agent.status === "출근 전" ? " offstage" : "");
+            (agent.status === "출근 전" ? " offstage" : "") +
+            (agent.status === "차단" ? " blocked" : agent.status === "확인 필요" ? " attention" : "");
           if (el.className !== cls) el.className = cls;
 
           const bubble = el.firstElementChild as HTMLElement;
@@ -227,7 +230,8 @@ export default function OfficeWorld({ engine, snap, selectedId, follow, onSelect
 
           const bar = el.children[1] as HTMLElement;
           const fill = bar.firstElementChild as HTMLElement;
-          const show = agent.anim === "type" ? "1" : "0";
+          // 진행률은 시나리오 작업에만 있다. 실시간 기록에는 없으므로(progress 0) 막대를 그리지 않는다.
+          const show = agent.anim === "type" && agent.progress > 0 ? "1" : "0";
           if (bar.style.opacity !== show) bar.style.opacity = show;
           if (show === "1") fill.style.width = `${Math.round(agent.progress * 100)}%`;
         }
@@ -284,7 +288,7 @@ export default function OfficeWorld({ engine, snap, selectedId, follow, onSelect
             return (
               <div
                 key={room.id}
-                className={`rm rm-${room.kind} ${status ? STATUS_CLASS[status] : ""} ${
+                className={`rm rm-${room.kind} rm-${room.id} ${status ? STATUS_CLASS[status] : ""} ${
                   hotRoom === room.id ? "hot" : ""
                 }`}
                 style={{

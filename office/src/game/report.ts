@@ -6,7 +6,7 @@
 import type { Snapshot } from "./sim";
 import { BLOCK_NEED, DEPT_BRIEF } from "./staff";
 import { roomOf } from "./world";
-import { COMPANY, INTEGRATIONS, REPORT_ENDPOINT } from "../../company.config";
+import { COMPANY, DECISION, INTEGRATIONS, REPORT_ENDPOINT, REQUEST } from "../../company.config";
 
 export type DayReport = {
   title: string;
@@ -35,19 +35,26 @@ export function buildReport(snap: Snapshot): DayReport {
     .filter(([, status]) => status === "완료")
     .map(([dept]) => `${roomOf(dept).name} — ${DEPT_BRIEF[dept]?.report ?? "완료"}`);
 
-  const risks = entries
-    .filter(([, status]) => status === "연동 대기")
-    .map(([dept]) => `${roomOf(dept).name} — ${BLOCK_NEED[dept] ?? "외부 연동"} 대기로 오늘 진행 불가`);
+  const risks = [
+    ...entries
+      .filter(([, status]) => status === "차단")
+      .map(([dept]) => `${roomOf(dept).name} — ${BLOCK_NEED[dept] ?? "외부 연결"} 전이라 오늘 진행 불가`),
+    ...entries
+      .filter(([, status]) => status === "확인 필요")
+      .map(([dept]) => `${roomOf(dept).name} — 확인 필요 (진행 소식 없음 또는 대표 결정 대기)`),
+  ];
 
-  const decisions = snap.approved
-    ? ["TOP 1 콘텐츠 제작 승인 — 대본·제작까지 진행 완료"]
-    : snap.approvalPending
-      ? ["TOP 1 콘텐츠 승인 여부 (결재 대기 중)"]
-      : ["오늘 대표 결재 안건 없음"];
+  const decisions = snap.live.on
+    ? ["실시간 모드 — 결정 사항은 Hermes Desk 기록에서 확인"]
+    : snap.approved
+      ? [`${DECISION.title} — 허용, QA 실기기 검증까지 진행 완료`]
+      : snap.approvalPending
+        ? [`${DECISION.title} (대표 확인 대기 중)`]
+        : ["오늘 대표 결정 안건 없음"];
 
   const next = [
-    ...risks.map((risk) => `${risk.split(" — ")[0]}: 연동 완료되면 즉시 재가동`),
-    snap.approved ? "제작된 콘텐츠 업로드 및 성과 기록" : "TOP 3 재검토",
+    ...risks.map((risk) => `${risk.split(" — ")[0]}: 연결·확인되면 즉시 재가동`),
+    snap.live.on ? "Hermes Desk 업무 보고에서 결과 파일 확인" : snap.approved ? `${REQUEST.project} 결과물 Slack 보고 · 게시는 대표 승인 뒤` : "요청 재검토",
   ];
 
   return {
@@ -106,8 +113,8 @@ export async function publish(report: DayReport): Promise<PublishResult> {
 
 export async function fetchIntegrations(): Promise<IntegrationStatus> {
   return {
-    notion: { configured: Boolean(REPORT_ENDPOINT), label: "Notion 저장" },
-    discord: { configured: Boolean(REPORT_ENDPOINT), label: "Discord 전송" },
+    notion: { configured: Boolean(REPORT_ENDPOINT), label: "보고서 저장" },
+    discord: { configured: Boolean(REPORT_ENDPOINT), label: "보고 전송" },
     ...INTEGRATIONS,
   };
 }
