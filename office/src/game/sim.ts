@@ -158,6 +158,8 @@ export type LiveSlack = {
     channel?: string;
     profile?: string | null;
     title?: string;
+    /** Hermes Desk 가 정리한 짧은 제목 (enrich_report) */
+    summary?: string;
     requestText?: string;
     user?: string | null;
     taskIds?: string[];
@@ -1411,6 +1413,9 @@ export class Company {
   applySlack(data: LiveSlack) {
     if (!this.live.on) return;
     const hermes = this.agentById.get("hermes-lead");
+    // 관측 플러그인이 없으면 ops.requests 가 비므로, Slack 에 기록된 요청 수를 대신 쓴다
+    const conversations = data.conversations ?? [];
+    this.live.requests = Math.max(this.live.requests, conversations.filter((c) => (c.taskIds?.length ?? 0) > 0 || c.requestText).length);
     for (const conv of data.conversations ?? []) {
       const prev = this.slackSeen.get(conv.id);
       const cur = { reportedDone: conv.reportedDone ?? 0, done: conv.done ?? 0 };
@@ -1418,7 +1423,7 @@ export class Company {
       if (!this.slackPrimed) continue; // 처음 받은 과거 대화는 재생하지 않는다
       const pmSeed = conv.profile ? STAFF_BY_CALLSIGN[conv.profile] : undefined;
       const pm = pmSeed ? this.agentById.get(pmSeed.id) : undefined;
-      const title = conv.title ?? conv.requestText ?? "요청";
+      const title = conv.summary ?? conv.title ?? conv.requestText ?? "요청";
       if (!prev) {
         // 새 요청 — 요청자와 원문 그대로
         const who = conv.user ?? "요청자 미확인";
@@ -1456,8 +1461,7 @@ export class Company {
       this.spotlightRoom(job.deptId, 8);
       this.goto(hermes, doorApproach(room), "이동 중");
       yield this.allFree([hermes]);
-      const lead = this.leadOf(job.deptId);
-      if (lead) this.say(lead, job.returning ? "결과 드릴게요." : "받았어요!", 2.4);
+      // 실시간 모드에서는 상대 팀장의 대답을 지어내지 않는다 — 기록에 없는 대사이기 때문
       yield 1.4;
       this.sitAtDesk(hermes);
       yield this.allFree([hermes]);
