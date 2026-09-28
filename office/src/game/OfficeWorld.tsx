@@ -12,13 +12,13 @@ import { REPORT_PHASE } from "./sim";
 import { EffectComposer } from "three/examples/jsm/postprocessing/EffectComposer.js";
 import { RenderPass } from "three/examples/jsm/postprocessing/RenderPass.js";
 import { UnrealBloomPass } from "three/examples/jsm/postprocessing/UnrealBloomPass.js";
+import { GTAOPass } from "three/examples/jsm/postprocessing/GTAOPass.js";
 import {
-  CENTER,
+  BRIDGES,
   CEO_ROOM,
   COLS,
-  CORRIDOR_RINGS,
-  CORRIDOR_SPOKES,
   ENTRANCE,
+  ISLANDS,
   MEETING_ROOM,
   MIMIR_CENTER,
   MIMIR_RADIUS,
@@ -26,6 +26,8 @@ import {
   ROOMS,
   ROWS,
   roomOf,
+  type Bridge,
+  type Island,
   type Prop,
   type Room,
 } from "./world";
@@ -68,7 +70,148 @@ const PALETTE = {
   sofa: 0x4c4670,
   table: 0x3a4658,
   metal: 0x2b3446,
+  islandTop: 0x39414f,
+  islandSide: 0x1c2230,
+  islandRock: 0x141924,
+  plank: 0x4a3b2e,
+  plankLine: 0x2c211a,
+  rail: 0x8a949f,
 };
+
+/** 배경: 보라 → 남색 그라데이션 (안개 대신). 화면에 꽉 차는 2D 텍스처 */
+function gradientBackground(): THREE.CanvasTexture {
+  const canvas = document.createElement("canvas");
+  canvas.width = 4;
+  canvas.height = 512;
+  const ctx = canvas.getContext("2d")!;
+  const g = ctx.createLinearGradient(0, 0, 0, 512);
+  g.addColorStop(0, "#3a2a6a");
+  g.addColorStop(0.45, "#1f2a5c");
+  g.addColorStop(1, "#0a1330");
+  ctx.fillStyle = g;
+  ctx.fillRect(0, 0, 4, 512);
+  const tex = new THREE.CanvasTexture(canvas);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  return tex;
+}
+
+/** 다리 널빤지 텍스처 */
+function plankTexture(): THREE.CanvasTexture {
+  const canvas = document.createElement("canvas");
+  canvas.width = 64;
+  canvas.height = 64;
+  const ctx = canvas.getContext("2d")!;
+  ctx.fillStyle = "#5a4636";
+  ctx.fillRect(0, 0, 64, 64);
+  for (let i = 0; i < 4; i += 1) {
+    ctx.fillStyle = i % 2 ? "#54412f" : "#5e4a38";
+    ctx.fillRect(0, i * 16, 64, 16);
+    ctx.fillStyle = "#3a2c20";
+    ctx.fillRect(0, i * 16, 64, 2);
+  }
+  const tex = new THREE.CanvasTexture(canvas);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  tex.wrapS = THREE.RepeatWrapping;
+  tex.wrapT = THREE.RepeatWrapping;
+  return tex;
+}
+
+/** 섬: 두꺼운 바닥판 + 아래 바위 밑동 + 테두리 빛 + 이름표 */
+function buildIsland(island: Island, scene: THREE.Scene): void {
+  const g = new THREE.Group();
+  const cx = island.x + island.w / 2;
+  const cz = island.y + island.h / 2;
+  const tint = island.color ? new THREE.Color(island.color) : null;
+  const topColor = new THREE.Color(PALETTE.islandTop);
+  if (tint) topColor.lerp(tint, 0.12);
+  const sideColor = new THREE.Color(PALETTE.islandSide);
+  if (tint) sideColor.lerp(tint, 0.1);
+  const top = new THREE.MeshStandardMaterial({ color: topColor, roughness: 0.9 });
+  const side = new THREE.MeshStandardMaterial({ color: sideColor, roughness: 0.95 });
+  const slab = new THREE.Mesh(new THREE.BoxGeometry(island.w, 2.4, island.h), [side, side, top, side, side, side]);
+  slab.position.set(cx, -1.2, cz);
+  slab.receiveShadow = true;
+  slab.castShadow = true;
+  g.add(slab);
+  // 밑동 (섬이 떠 있는 느낌)
+  const rock = new THREE.Mesh(
+    new THREE.BoxGeometry(island.w - 2.5, 2.2, island.h - 2.5),
+    new THREE.MeshStandardMaterial({ color: PALETTE.islandRock, roughness: 1 }),
+  );
+  rock.position.set(cx, -3.4, cz);
+  g.add(rock);
+  const rock2 = new THREE.Mesh(
+    new THREE.BoxGeometry(island.w - 6, 1.6, island.h - 6),
+    new THREE.MeshStandardMaterial({ color: 0x0e1220, roughness: 1 }),
+  );
+  rock2.position.set(cx, -5.2, cz);
+  g.add(rock2);
+  // 테두리 빛
+  const edgeColor = tint ? tint : new THREE.Color(PALETTE.corridorLine);
+  const edge = new THREE.LineSegments(
+    new THREE.EdgesGeometry(new THREE.BoxGeometry(island.w, 0.02, island.h)),
+    new THREE.LineBasicMaterial({ color: edgeColor, transparent: true, opacity: island.kind === "project" ? 0.55 : 0.28 }),
+  );
+  edge.position.set(cx, 0.02, cz);
+  g.add(edge);
+  // 이름표 (프로젝트 섬은 방 이름이 이미 있으므로 생략)
+  if (island.kind !== "project") {
+    const label = textSprite(`${island.icon} ${island.name}`, { bg: "rgba(13,19,34,.82)", color: "#dfe7f5", size: 26, border: "rgba(80,214,255,.5)" });
+    label.position.set(island.x + 3.2, 2.6, island.y + 0.9);
+    label.scale.multiplyScalar(0.85);
+    g.add(label);
+  }
+  scene.add(g);
+}
+
+/** 다리: 널빤지 + 난간 */
+function buildBridge(bridge: Bridge, scene: THREE.Scene, plankMat: THREE.MeshStandardMaterial, railMat: THREE.MeshStandardMaterial): void {
+  const g = new THREE.Group();
+  const horizontal = bridge.from.y === bridge.to.y;
+  const x0 = Math.min(bridge.from.x, bridge.to.x);
+  const x1 = Math.max(bridge.from.x, bridge.to.x);
+  const y0 = Math.min(bridge.from.y, bridge.to.y);
+  const y1 = Math.max(bridge.from.y, bridge.to.y);
+  const len = (horizontal ? x1 - x0 : y1 - y0) + 1 + 1.2; // 양 끝 0.6 씩 섬 안으로 물린다
+  const wide = bridge.width + 0.2;
+  const cx = horizontal ? (x0 + x1 + 1) / 2 : bridge.from.x + bridge.width / 2;
+  const cz = horizontal ? bridge.from.y + bridge.width / 2 : (y0 + y1 + 1) / 2;
+  const mat = plankMat.clone();
+  mat.map = plankMat.map!.clone();
+  mat.map.needsUpdate = true;
+  mat.map.repeat.set(horizontal ? len / 2 : 1, horizontal ? 1 : len / 2);
+  const plank = new THREE.Mesh(new THREE.BoxGeometry(horizontal ? len : wide, 0.5, horizontal ? wide : len), mat);
+  plank.position.set(cx, -0.22, cz);
+  plank.receiveShadow = true;
+  plank.castShadow = true;
+  g.add(plank);
+  // 다리 밑 받침 (대로만)
+  if (bridge.kind === "avenue") {
+    const beam = new THREE.Mesh(new THREE.BoxGeometry(horizontal ? len : wide - 0.6, 0.6, horizontal ? wide - 0.6 : len), new THREE.MeshStandardMaterial({ color: PALETTE.islandSide, roughness: 1 }));
+    beam.position.set(cx, -0.75, cz);
+    g.add(beam);
+  }
+  // 난간: 양쪽 가로대 + 기둥
+  const railH = 0.85;
+  const off = wide / 2 + 0.08;
+  for (const sgn of [-1, 1]) {
+    const rail = new THREE.Mesh(new THREE.BoxGeometry(horizontal ? len : 0.08, 0.08, horizontal ? 0.08 : len), railMat);
+    rail.position.set(horizontal ? cx : cx + sgn * off, railH, horizontal ? cz + sgn * off : cz);
+    rail.castShadow = true;
+    g.add(rail);
+    const rail2 = rail.clone();
+    rail2.position.y = railH * 0.5;
+    g.add(rail2);
+    const posts = Math.max(2, Math.round(len / 2.5));
+    for (let i = 0; i <= posts; i += 1) {
+      const t = -len / 2 + 0.3 + (i * (len - 0.6)) / posts;
+      const post = new THREE.Mesh(new THREE.BoxGeometry(0.12, railH, 0.12), railMat);
+      post.position.set(horizontal ? cx + t : cx + sgn * off, railH / 2, horizontal ? cz + sgn * off : cz + t);
+      g.add(post);
+    }
+  }
+  scene.add(g);
+}
 
 /** 캔버스로 글자 텍스처를 만든다 (이름표·말풍선) */
 function textSprite(text: string, opts: { bg: string; color: string; size?: number; pad?: number; border?: string }): THREE.Sprite {
@@ -545,21 +688,33 @@ export default function OfficeWorld({ engine, snap, selectedId, follow, onSelect
     mount.appendChild(renderer.domElement);
 
     const scene = new THREE.Scene();
-    scene.background = new THREE.Color(0x11161f);
-    scene.fog = new THREE.Fog(0x11161f, 110, 210);
+    scene.background = gradientBackground();
 
-    const camera = new THREE.PerspectiveCamera(42, 1, 0.5, 400);
+    // 고정 아이소메트릭 카메라 (직교 투영). 회전 없음, 이동·확대만.
+    const FRUSTUM = 50; // zoom 1 일 때 화면 세로 반높이 (월드 단위)
+    const ISO_DIR = new THREE.Vector3(1, 1.15, 1).normalize();
+    const ISO_DIST = 260;
+    const WORLD_MID = new THREE.Vector3(COLS / 2, 0, ROWS / 2);
+    const HOME = WORLD_MID.clone();
+    const camera = new THREE.OrthographicCamera(-FRUSTUM, FRUSTUM, FRUSTUM, -FRUSTUM, 1, 700);
     const controls = new OrbitControls(camera, renderer.domElement);
     controls.enableDamping = true;
-    controls.dampingFactor = 0.08;
-    controls.maxPolarAngle = Math.PI * 0.46;
-    controls.minDistance = 8;
-    controls.maxDistance = 160;
-    controls.target.set(MIMIR_CENTER.x, 0, MIMIR_CENTER.y);
-    camera.position.set(MIMIR_CENTER.x, 95, MIMIR_CENTER.y + 78);
+    controls.dampingFactor = 0.1;
+    controls.enableRotate = false;
+    controls.screenSpacePanning = false;
+    controls.minZoom = 0.6;
+    controls.maxZoom = 6;
+    controls.mouseButtons = { LEFT: THREE.MOUSE.PAN, MIDDLE: THREE.MOUSE.DOLLY, RIGHT: THREE.MOUSE.PAN };
+    controls.touches = { ONE: THREE.TOUCH.PAN, TWO: THREE.TOUCH.DOLLY_PAN };
+    let fitZoom = 1;
+    const placeCamera = () => camera.position.copy(controls.target).addScaledVector(ISO_DIR, ISO_DIST);
+    controls.target.copy(HOME);
+    placeCamera();
     resetRef.current = () => {
-      controls.target.set(MIMIR_CENTER.x, 0, MIMIR_CENTER.y);
-      camera.position.set(MIMIR_CENTER.x, 95, MIMIR_CENTER.y + 78);
+      controls.target.copy(HOME);
+      camera.zoom = fitZoom;
+      camera.updateProjectionMatrix();
+      placeCamera();
     };
 
     // 조명
@@ -568,57 +723,23 @@ export default function OfficeWorld({ engine, snap, selectedId, follow, onSelect
     const sun = new THREE.DirectionalLight(0xfff1d6, 2.4);
     sun.position.set(COLS * 0.3, 70, ROWS * 0.15);
     sun.castShadow = true;
-    sun.shadow.mapSize.set(2048, 2048);
-    sun.shadow.camera.left = -70;
-    sun.shadow.camera.right = 70;
-    sun.shadow.camera.top = 70;
-    sun.shadow.camera.bottom = -70;
-    sun.shadow.camera.far = 220;
+    sun.shadow.mapSize.set(4096, 4096);
+    sun.shadow.camera.left = -95;
+    sun.shadow.camera.right = 95;
+    sun.shadow.camera.top = 95;
+    sun.shadow.camera.bottom = -95;
+    sun.shadow.camera.far = 260;
     sun.shadow.bias = -0.0008;
     sun.target.position.set(COLS / 2, 0, ROWS / 2);
     scene.add(sun, sun.target);
 
     const mats = makeMaterials();
 
-    // 바닥 (카펫) + 복도 타일
-    const ground = new THREE.Mesh(new THREE.PlaneGeometry(COLS + 40, ROWS + 40), new THREE.MeshStandardMaterial({ color: PALETTE.floor, roughness: 1 }));
-    ground.rotation.x = -Math.PI / 2;
-    ground.position.set(COLS / 2, 0, ROWS / 2);
-    ground.receiveShadow = true;
-    scene.add(ground);
-    // 복도 — 타일 계단 대신 매끈한 타원 띠 + 스포크 (타일은 경로 비용에만 쓴다)
-    const corridorMat = new THREE.MeshStandardMaterial({ color: PALETTE.corridor, roughness: 0.65 });
-    const edgeMat = new THREE.LineBasicMaterial({ color: PALETTE.corridorLine, transparent: true, opacity: 0.45 });
-    const ellipsePts = (rx: number, ry: number) => {
-      const curve = new THREE.EllipseCurve(0, 0, rx, ry, 0, Math.PI * 2, false, 0);
-      return curve.getPoints(160);
-    };
-    for (const ring of CORRIDOR_RINGS) {
-      const half = ring.width / 2;
-      const shape = new THREE.Shape(ellipsePts(ring.rx + half, ring.ry + half));
-      const hole = new THREE.Path(ellipsePts(ring.rx - half, ring.ry - half));
-      shape.holes.push(hole);
-      const geo = new THREE.ShapeGeometry(shape, 4);
-      const mesh = new THREE.Mesh(geo, corridorMat);
-      mesh.rotation.x = -Math.PI / 2;
-      mesh.position.set(CENTER.x + 0.5, 0.03, CENTER.y + 0.5);
-      mesh.receiveShadow = true;
-      scene.add(mesh);
-      for (const r of [half, -half]) {
-        const pts = ellipsePts(ring.rx + r, ring.ry + r).map((p) => new THREE.Vector3(CENTER.x + 0.5 + p.x, 0.05, CENTER.y + 0.5 + p.y));
-        scene.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints(pts), edgeMat));
-      }
-    }
-    for (const spoke of CORRIDOR_SPOKES) {
-      const dx = spoke.to.x - spoke.from.x;
-      const dz = spoke.to.y - spoke.from.y;
-      const len = Math.hypot(dx, dz) + 1;
-      const horizontal = Math.abs(dx) >= Math.abs(dz);
-      const mesh = new THREE.Mesh(new THREE.BoxGeometry(horizontal ? len : 1.6, 0.04, horizontal ? 1.6 : len), corridorMat);
-      mesh.position.set((spoke.from.x + spoke.to.x) / 2 + 0.5, 0.03, (spoke.from.y + spoke.to.y) / 2 + 0.5);
-      mesh.receiveShadow = true;
-      scene.add(mesh);
-    }
+    // 섬 + 다리 (섬 밖은 허공)
+    for (const island of ISLANDS) buildIsland(island, scene);
+    const plankMat = new THREE.MeshStandardMaterial({ map: plankTexture(), roughness: 0.9 });
+    const railMat = new THREE.MeshStandardMaterial({ color: PALETTE.rail, roughness: 0.5, metalness: 0.5 });
+    for (const bridge of BRIDGES) buildBridge(bridge, scene, plankMat, railMat);
     // 출입구 매트
     const mat = addBox(scene, 5, 0.06, 1.6, ENTRANCE.x + 1, 0.03, ENTRANCE.y - 0.6, new THREE.MeshStandardMaterial({ color: 0x1f6f8a, emissive: 0x50d6ff, emissiveIntensity: 0.25 }), false);
     mat.receiveShadow = false;
@@ -643,6 +764,7 @@ export default function OfficeWorld({ engine, snap, selectedId, follow, onSelect
     const pPos = new Float32Array(MAX_P * 3);
     const pCol = new Float32Array(MAX_P * 3);
     pGeo.setAttribute("position", new THREE.BufferAttribute(pPos, 3));
+    pGeo.setDrawRange(0, 0);
     pGeo.setAttribute("color", new THREE.BufferAttribute(pCol, 3));
     const points = new THREE.Points(pGeo, new THREE.PointsMaterial({ size: 0.55, vertexColors: true, transparent: true, opacity: 0.9, depthWrite: false }));
     scene.add(points);
@@ -673,14 +795,49 @@ export default function OfficeWorld({ engine, snap, selectedId, follow, onSelect
 
     const composer = new EffectComposer(renderer);
     composer.addPass(new RenderPass(scene, camera));
-    const bloom = new UnrealBloomPass(new THREE.Vector2(1, 1), 0.55, 0.6, 0.82);
+    const ao = new GTAOPass(scene, camera, 1, 1);
+    ao.output = GTAOPass.OUTPUT.Default;
+    ao.updateGtaoMaterial({ radius: 1.6, distanceExponent: 1, thickness: 1, scale: 1, samples: 12, distanceFallOff: 1, screenSpaceRadius: false });
+    ao.updatePdMaterial({ lumaPhi: 10, depthPhi: 2, normalPhi: 3, radius: 4, radiusExponent: 1, rings: 2, samples: 16 });
+    ao.blendIntensity = 0.7;
+    if (new URLSearchParams(location.search).get("ao") !== "0") composer.addPass(ao);
+    const bloom = new UnrealBloomPass(new THREE.Vector2(1, 1), 0.5, 0.6, 0.84);
     composer.addPass(bloom);
     const resize = () => {
       const w = mount.clientWidth;
       const h = mount.clientHeight;
       renderer.setSize(w, h, false);
       composer.setSize(w, h);
-      camera.aspect = w / h;
+      const aspect = w / h;
+      camera.left = -FRUSTUM * aspect;
+      camera.right = FRUSTUM * aspect;
+      camera.top = FRUSTUM;
+      camera.bottom = -FRUSTUM;
+      // 전체 보기: 월드 네 귀퉁이(바닥·섬 밑동·벽 높이)를 투영해 화면에 들어오는 배율과 중심을 구한다
+      const probe = camera.clone();
+      probe.zoom = 1;
+      probe.position.copy(WORLD_MID).addScaledVector(ISO_DIR, ISO_DIST);
+      probe.lookAt(WORLD_MID);
+      probe.updateProjectionMatrix();
+      probe.updateMatrixWorld();
+      let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+      for (const [x, z] of [[0, 0], [COLS, 0], [0, ROWS], [COLS, ROWS]] as const)
+        for (const y of [-6.5, 3.5]) {
+          const v = new THREE.Vector3(x, y, z).project(probe);
+          minX = Math.min(minX, v.x); maxX = Math.max(maxX, v.x); minY = Math.min(minY, v.y); maxY = Math.max(maxY, v.y);
+        }
+      fitZoom = Math.min(2 / (maxX - minX), 2 / (maxY - minY)) * 0.96;
+      // 투영 상자의 중심이 화면 가운데 오도록 목표점을 옮긴다 (zoom 1 기준 NDC → 월드)
+      const cxN = (minX + maxX) / 2, cyN = (minY + maxY) / 2;
+      const right = new THREE.Vector3(1, 0, -1).normalize();
+      const upGround = new THREE.Vector3(-1, 0, -1).normalize();
+      const sinElev = ISO_DIR.y;
+      HOME.copy(WORLD_MID).addScaledVector(right, cxN * FRUSTUM * aspect).addScaledVector(upGround, (cyN * FRUSTUM) / sinElev);
+      if (zoomRef.current === "fit") {
+        camera.zoom = fitZoom;
+        controls.target.copy(HOME);
+        placeCamera();
+      }
       camera.updateProjectionMatrix();
     };
     resize();
@@ -701,14 +858,16 @@ export default function OfficeWorld({ engine, snap, selectedId, follow, onSelect
       if (zoomRef.current === "close" && followRef.current && focusRef.current) {
         tmpTarget.set(focusRef.current.x, 0, focusRef.current.z);
         controls.target.lerp(tmpTarget, 0.04);
-        tmpCam.copy(controls.target).add(new THREE.Vector3(0, 18, 16));
-        camera.position.lerp(tmpCam, 0.04);
+        camera.zoom += (3.2 - camera.zoom) * 0.04;
+        camera.updateProjectionMatrix();
       } else if (zoomRef.current === "fit") {
-        tmpTarget.set(MIMIR_CENTER.x, 0, MIMIR_CENTER.y);
-        controls.target.lerp(tmpTarget, 0.05);
-        tmpCam.set(MIMIR_CENTER.x, 95, MIMIR_CENTER.y + 78);
-        camera.position.lerp(tmpCam, 0.05);
+        controls.target.lerp(HOME, 0.05);
+        camera.zoom += (fitZoom - camera.zoom) * 0.05;
+        camera.updateProjectionMatrix();
       }
+      // 카메라는 항상 같은 방향에서 목표점을 본다 (아이소메트릭 고정)
+      tmpCam.copy(controls.target).addScaledVector(ISO_DIR, ISO_DIST);
+      camera.position.copy(tmpCam);
       controls.update();
 
       // 방 프레임 색 = 상태
@@ -855,6 +1014,7 @@ export default function OfficeWorld({ engine, snap, selectedId, follow, onSelect
           pCol[i * 3 + 1] = p.color.g;
           pCol[i * 3 + 2] = p.color.b;
         }
+        pGeo.setDrawRange(0, particles.length);
         pGeo.attributes.position.needsUpdate = true;
         pGeo.attributes.color.needsUpdate = true;
       }
@@ -893,7 +1053,7 @@ export default function OfficeWorld({ engine, snap, selectedId, follow, onSelect
             🔍 가까이
           </button>
         </div>
-        <div className="world-hint">드래그로 회전 · 휠로 확대 · 직원 클릭하면 프로필</div>
+        <div className="world-hint">드래그로 이동 · 휠로 확대 · 직원 클릭하면 프로필</div>
       </div>
     </div>
   );

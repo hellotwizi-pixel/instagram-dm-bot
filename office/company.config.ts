@@ -97,6 +97,16 @@ export const DEPARTMENTS = [
     task: "Slack 요청 접수 → 프로젝트 PM 전달 · 결과 회수·보고", report: "누가 맡았고 어디까지 됐는지 한 줄로 남겨요." },
 ] as const;
 
+/**
+ * 부서 동 3개 — 공유 부서 9개를 큰 섬 3개에 나눠 넣습니다 (섬 하나에 부서 방 3개).
+ * 순서대로 왼쪽 아래 · 오른쪽 위 · 오른쪽 아래 섬에 놓입니다.
+ */
+export const WINGS = [
+  { id: "make", name: "제작동", icon: "🏗️", depts: ["dev", "plan", "design"] },
+  { id: "admin", name: "관리동", icon: "🏛️", depts: ["legal", "sec", "aios"] },
+  { id: "grow", name: "성장동", icon: "🌱", depts: ["mkt", "ad", "ops"] },
+] as const;
+
 /** 미미르 — 사무실 한가운데. 직원이 아니라 회사 기억(방)입니다. */
 export const MIMIR = { id: "mimir", name: "미미르", short: "mimir.memory", icon: "🧠" } as const;
 

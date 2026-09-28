@@ -48,9 +48,9 @@ HERMES_DESK_URL=http://127.0.0.1:64729 npm run dev
 
 | Hermes Desk | 픽셀 오피스 |
 |---|---|
-| `LABELS` 의 부서 9개 (개발·기획·디자인·마케팅·광고·운영·법무·보안·AI-OS 관리) | 바깥 링의 공유 부서 방 9개 |
-| 여섯 행성 (ACE 인도어골프, 바베큐국립공원, 하하팩토리, 디토크, DMmate, AI-OS 관리) | 안쪽 링의 프로젝트 방 6개, 각 방에 PM. 행성이 없는 담당 4명은 헤르메스 HQ |
-| 미미르 (회사 기억, 원천 16종) | 사무실 정중앙의 파란 구체. 직원이 조회하러 걸어가고, 일하는 방으로 지식 입자가 흐름 |
+| `LABELS` 의 부서 9개 (개발·기획·디자인·마케팅·광고·운영·법무·보안·AI-OS 관리) | 세 동(제작동·관리동·성장동) 섬에 3개씩 놓인 공유 부서 방 9개 |
+| 여섯 행성 (ACE 인도어골프, 바베큐국립공원, 디토크, 하하팩토리, DMmate, AI-OS 관리) | 윗줄 프로젝트 섬 6개, 각 섬에 PM. 행성이 없는 담당 4명은 헤르메스 HQ |
+| 미미르 (회사 기억, 원천 16종) | 코어 섬 한가운데의 아크 리액터. 직원이 조회하러 걸어가고, 일하는 방으로 지식 입자가 흐름 |
 | 헤르메스 (요청 접수·분담·결과 회수) + `default`·`reviewer` 프로필 | `헤르메스` 방 — 지시창 답변자, 배달부 |
 | 에이전트 프로필 47개 (`devpm`, `devcoder`, …) | 직원 47명, `callsign` = 프로필 id |
 | 작업 상태 `todo/running/blocked/done…` | 작업 중 / 확인 필요 / 차단 / 대기 / 완료 |
@@ -67,6 +67,7 @@ HERMES_DESK_URL=http://127.0.0.1:64729 npm run dev
 | 회사 이름, 로고 글자, 화면 제목 | `COMPANY` |
 | 대표(나) 이름·성격·머리색 | `CEO_PROFILE` |
 | 부서 12개 이름·아이콘·하는 일·Hermes group 매핑 | `DEPARTMENTS` |
+| 부서를 묶는 동(섬) 3개 | `WINGS` |
 | 직원(에이전트) 이름·역할·색·혼잣말·프로필 id | `STAFF_LIST` |
 | "차단"으로 표시할 부서와 이유 | `PENDING_INTEGRATIONS`, `BLOCK_REASONS` |
 | 오늘의 Slack 요청과 세부 업무 | `REQUEST` |
@@ -82,7 +83,7 @@ HERMES_DESK_URL=http://127.0.0.1:64729 npm run dev
 
 1. **부서 `id`는 바꾸지 마세요** (`dev plan design mkt ad ops legal sec aios pm mimir hermes`).
    시나리오(`src/game/sim.ts`)가 이 id로 캐릭터를 움직입니다. `name · icon · short · task · report · liveGroups` 는 자유입니다.
-2. **프로젝트 6개 · 부서 9개 + 헤르메스** 를 유지하세요. 원형 배치의 칸 수가 고정입니다. 배치를 바꿨으면 `npx tsx scripts/check-world.ts` 로 방 겹침·도달 가능 여부를 확인하세요.
+2. **프로젝트 6개 · 동 3개 × 부서 3개 + 헤르메스** 를 유지하세요. 섬 배치의 칸 수가 고정입니다. 배치를 바꿨으면 `npx tsx scripts/check-world.ts` 로 방 겹침·도달 가능 여부를 확인하세요.
 
 ## 구조
 
@@ -96,11 +97,11 @@ office/
 │   └── game/
 │       ├── sim.ts        ← 시나리오 + 직원 상태머신 + 실시간 반영(applyLive)
 │       ├── live.ts       ← Hermes Desk 연결 (토큰 → 3초 조회)
-│       ├── world.ts      ← 원형 타일 맵: 중앙 미미르 구체+대표실, 안쪽 프로젝트 링, 바깥 부서 링
+│       ├── world.ts      ← 섬 타일 맵: 윗줄 프로젝트 섬 6개, 가운데 접수동·코어(미미르+대표실)·관리동, 아랫줄 제작동·성장동, 다리로 연결
 │       ├── pathfinding.ts
 │       ├── staff.ts      ← config → 직원 데이터, 프로필 id 색인
 │       ├── report.ts     ← 보고서 생성 (서버 없으면 콘솔 출력)
-│       └── OfficeWorld.tsx ← Three.js 3D 렌더러 (방·가구·아바타·아크 리액터·카메라)
+│       └── OfficeWorld.tsx ← Three.js 3D 렌더러 (섬·다리·방·가구·아바타·아크 리액터·고정 아이소메트릭 카메라)
 └── public/favicon.svg
 ```
 
