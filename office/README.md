@@ -3,7 +3,7 @@
 AI 에이전트들이 출근하고, 자리에 앉아 일하고, 회의실에 모이고, 대표실로 보고하러 오는 **픽셀 사무실 UI**입니다.
 화면은 갓생맘 AI Office 의 픽셀 오피스를 그대로 옮겼고, **부서·에이전트·업무 흐름·상태 용어는 Hermes Desk(미미르 대시보드) 기준**으로 다시 짰습니다.
 
-- Vite + React + TypeScript 만 사용 (Next.js / Cloudflare / Python 서버 없음)
+- Vite + React + TypeScript + Three.js (3D 렌더러). Next.js / Cloudflare / Python 서버 없음
 - 정적 파일로 빌드되므로 Vercel·GitHub Pages·아무 정적 호스팅에 올릴 수 있어요
 - 기본은 **시나리오 모드**. 개발 서버에서 Hermes Desk 주소를 주면 **실시간 모드**로 실제 작업 기록을 반영합니다
 
@@ -90,7 +90,7 @@ office/
 │       ├── pathfinding.ts
 │       ├── staff.ts      ← config → 직원 데이터, 프로필 id 색인
 │       ├── report.ts     ← 보고서 생성 (서버 없으면 콘솔 출력)
-│       └── OfficeWorld.tsx ← 카메라·스프라이트 렌더링
+│       └── OfficeWorld.tsx ← Three.js 3D 렌더러 (방·가구·아바타·아크 리액터·카메라)
 └── public/favicon.svg
 ```
 

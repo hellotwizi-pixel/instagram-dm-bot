@@ -629,3 +629,6 @@
 }
 @keyframes rxSpin { to { transform: rotate(360deg); } }
 @keyframes rxPulse { 50% { box-shadow: 0 0 34px #9fe8ff, 0 0 80px rgba(80, 214, 255, .95); transform: scale(1.06); } }
+
+.world-3d { cursor: grab; }
+.world-3d canvas { display: block; width: 100% !important; height: 100% !important; }
