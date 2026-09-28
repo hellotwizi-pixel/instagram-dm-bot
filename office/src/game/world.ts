@@ -1,19 +1,19 @@
-// 오피스 월드 맵 — 3층 구조
-//   윗줄   : 프로젝트 방 6개 (각 방에 PM)         ← Slack 요청이 먼저 들어오는 곳
-//   가운데 : 대표실 · 헤르메스 HQ · 미미르(중앙) · 회의실 · 라운지
-//   아랫줄 : 공유 부서 방 9개 (두 줄)            ← PM 이 배정한 일을 하는 공유 풀
+// 오피스 월드 맵 — 원형 구조
+//   중앙 코어 : 미미르(구체) + 그 아래 작은 대표실
+//   안쪽 링   : 프로젝트 방 6개 (각 방에 PM)          ← Slack 요청이 먼저 들어오는 곳
+//   바깥 링   : 공유 부서 방 9개 + 헤르메스 HQ + 회의실 + 라운지 (12칸, 아래쪽 한 칸은 출입구)
 // 타일 그리드 기반. 0 = 걸을 수 있음, 1 = 막힘(벽·가구)
 
 import { DEPARTMENTS, MIMIR, PROJECTS, STAFF_LIST } from "../../company.config";
 
 export const TILE = 18;
-export const COLS = 74;
-export const ROWS = 56;
+export const COLS = 106;
+export const ROWS = 94;
 export const WORLD_W = COLS * TILE;
 export const WORLD_H = ROWS * TILE;
 
 export type Pt = { x: number; y: number };
-export type RoomKind = "dept" | "project" | "ceo" | "meeting" | "lounge" | "mimir";
+export type RoomKind = "dept" | "project" | "ceo" | "meeting" | "lounge";
 
 export type Desk = {
   /** 책상 상판 좌측 타일 */
@@ -40,9 +40,18 @@ export type Room = {
   loiter: Pt[];
 };
 
+/** 사무실 중심 (미미르 구체의 중심) */
+export const CENTER: Pt = { x: 53, y: 46 };
+/** 미미르 구체 반지름(타일) — 이 안은 걸을 수 없다 */
+export const MIMIR_RADIUS = 5;
+export const MIMIR_CENTER: Pt = CENTER;
+/** 미미르 조회 위치 (구체 바로 아래) */
+export const MIMIR_SPOT: Pt = { x: CENTER.x, y: CENTER.y + MIMIR_RADIUS + 1 };
+export const MIMIR_ID = MIMIR.id;
+
 /** 책상 한 개는 3칸. 방 안쪽 왼쪽부터 채우고 오른쪽 한 칸은 통로로 남긴다 */
 function deskGrid(x: number, y: number, w: number, rows: number[], count: number): Desk[] {
-  const cols = Math.floor((w - 3) / 3); // 오른쪽 통로 1칸 확보
+  const cols = Math.floor((w - 3) / 3);
   const desks: Desk[] = [];
   for (const dy of rows) {
     for (let c = 0; c < cols; c += 1) {
@@ -58,15 +67,65 @@ function staffCount(pred: (s: (typeof STAFF_LIST)[number]) => boolean) {
   return STAFF_LIST.filter(pred).length;
 }
 
-// ── 윗줄: 프로젝트 방 6개 ───────────────────────────────
-const PROJECT_Y = 2;
+/** 중심을 향한 벽에 문을 낸다 (위·아래·왼쪽·오른쪽 중 가장 가까운 벽) */
+function doorToward(x: number, y: number, w: number, h: number, target: Pt): Pt {
+  const cx = x + w / 2;
+  const cy = y + h / 2;
+  const dx = target.x - cx;
+  const dy = target.y - cy;
+  if (Math.abs(dx) * h > Math.abs(dy) * w) {
+    return dx > 0 ? { x: x + w - 1, y: Math.floor(cy) } : { x, y: Math.floor(cy) };
+  }
+  return dy > 0 ? { x: Math.floor(cx), y: y + h - 1 } : { x: Math.floor(cx), y };
+}
+
+/** 타원 위의 슬롯 좌표 (방의 중심) */
+function ringSlot(angleDeg: number, rx: number, ry: number): Pt {
+  const a = (angleDeg * Math.PI) / 180;
+  return { x: CENTER.x + rx * Math.cos(a), y: CENTER.y + ry * Math.sin(a) };
+}
+
+function placeRoom(center: Pt, w: number, h: number): Pt {
+  return { x: Math.round(center.x - w / 2), y: Math.round(center.y - h / 2) };
+}
+
+// ── 중앙: 대표실 (미미르 구체 아래, 작게) ─────────────────
+const CEO_W = 11;
+const CEO_H = 8;
+export const CEO_ROOM: Room = (() => {
+  const x = CENTER.x - 5;
+  const y = CENTER.y + MIMIR_RADIUS + 3;
+  return {
+    id: "ceo",
+    name: "대표실",
+    short: "ceo.core",
+    icon: "👑",
+    kind: "ceo",
+    x,
+    y,
+    w: CEO_W,
+    h: CEO_H,
+    doors: [{ x: x + 5, y: y + CEO_H - 1 }],
+    desks: [{ deskX: x + 3, deskY: y + 3, seat: { x: x + 5, y: y + 2 } }],
+    loiter: [
+      { x: x + 2, y: y + 5 },
+      { x: x + 8, y: y + 5 },
+    ],
+  };
+})();
+export const CEO_SEAT: Pt = CEO_ROOM.desks[0].seat;
+/** 대표 책상 앞 보고 위치 */
+export const CEO_REPORT_SPOT: Pt = { x: CEO_SEAT.x, y: CEO_ROOM.y + 5 };
+
+// ── 안쪽 링: 프로젝트 방 6개 ─────────────────────────────
 const PROJECT_W = 11;
-const PROJECT_H = 9;
-const PROJECT_X = [2, 14, 26, 38, 50, 62];
+const PROJECT_H = 8;
+const INNER_RX = 26;
+const INNER_RY = 19;
 
 export const PROJECT_ROOMS: Room[] = PROJECTS.map((p, i) => {
-  const x = PROJECT_X[i];
-  const y = PROJECT_Y;
+  const angle = -60 + i * 60; // 맨 아래(90°)는 비워 대표실 문 앞 통로로 쓴다
+  const { x, y } = placeRoom(ringSlot(angle, INNER_RX, INNER_RY), PROJECT_W, PROJECT_H);
   const n = Math.max(1, staffCount((s) => s.project === p.id));
   return {
     id: p.id,
@@ -79,180 +138,44 @@ export const PROJECT_ROOMS: Room[] = PROJECTS.map((p, i) => {
     y,
     w: PROJECT_W,
     h: PROJECT_H,
-    doors: [{ x: x + 5, y: y + PROJECT_H - 1 }],
-    desks: deskGrid(x, y, PROJECT_W, [4], n),
+    // 윗벽에 문이 나면 요청 보드(x+1..x+6)를 피해 오른쪽으로 낸다
+    doors: [(() => { const d = doorToward(x, y, PROJECT_W, PROJECT_H, CENTER); return d.y === y ? { x: x + 8, y } : d; })()],
+    desks: deskGrid(x, y, PROJECT_W, [3], n),
     loiter: [
       { x: x + 8, y: y + 3 },
       { x: x + 8, y: y + 6 },
-      { x: x + 2, y: y + 7 },
+      { x: x + 2, y: y + 6 },
     ],
   };
 });
 
-// ── 가운데 줄 ───────────────────────────────────────────
-const MID_Y = 13;
-const MID_H = 13;
-
-export const CEO_ROOM: Room = {
-  id: "ceo",
-  name: "대표실",
-  short: "ceo.office",
-  icon: "👑",
-  kind: "ceo",
-  x: 2,
-  y: MID_Y,
-  w: 13,
-  h: MID_H,
-  doors: [{ x: 8, y: MID_Y + MID_H - 1 }],
-  desks: [{ deskX: 6, deskY: MID_Y + 5, seat: { x: 8, y: MID_Y + 4 } }],
-  loiter: [
-    { x: 4, y: MID_Y + 9 },
-    { x: 11, y: MID_Y + 9 },
-    { x: 3, y: MID_Y + 3 },
-  ],
-};
-
-const HERMES_X = 16;
-const HERMES_W = 13;
-export const HERMES_ROOM: Room = (() => {
-  const meta = DEPARTMENTS.find((d) => d.id === "hermes")!;
-  const n = staffCount((s) => s.dept === "hermes");
-  return {
-    id: "hermes",
-    name: meta.name,
-    short: meta.short,
-    icon: meta.icon,
-    kind: "dept",
-    x: HERMES_X,
-    y: MID_Y,
-    w: HERMES_W,
-    h: MID_H,
-    doors: [
-      { x: HERMES_X + 6, y: MID_Y },
-      { x: HERMES_X + 6, y: MID_Y + MID_H - 1 },
-    ],
-    desks: deskGrid(HERMES_X, MID_Y, HERMES_W, [3, 6, 9], n),
-    loiter: [
-      { x: HERMES_X + 11, y: MID_Y + 5 },
-      { x: HERMES_X + 11, y: MID_Y + 8 },
-    ],
-  };
-})();
-
-const MIMIR_X = 30;
-const MIMIR_W = 17;
-export const MIMIR_ROOM: Room = {
-  id: MIMIR.id,
-  name: MIMIR.name,
-  short: MIMIR.short,
-  icon: MIMIR.icon,
-  kind: "mimir",
-  x: MIMIR_X,
-  y: MID_Y,
-  w: MIMIR_W,
-  h: MID_H,
-  doors: [
-    { x: MIMIR_X + 8, y: MID_Y },
-    { x: MIMIR_X + 8, y: MID_Y + MID_H - 1 },
-  ],
-  desks: [],
-  loiter: [
-    { x: MIMIR_X + 3, y: MID_Y + 6 },
-    { x: MIMIR_X + 13, y: MID_Y + 6 },
-  ],
-};
-/** 미미르 조회 위치 (뇌 단말 앞) */
-export const MIMIR_SPOT: Pt = { x: MIMIR_X + 8, y: MID_Y + 7 };
-/** 미미르 중심 (입자 효과의 출발점) */
-export const MIMIR_CENTER: Pt = { x: MIMIR_X + 8, y: MID_Y + 5 };
-
-const MEET_X = 48;
-const MEET_W = 16;
-export const MEETING_ROOM: Room = {
-  id: "meeting",
-  name: "분담·검토 회의실",
-  short: "meeting.hall",
-  icon: "💬",
-  kind: "meeting",
-  x: MEET_X,
-  y: MID_Y,
-  w: MEET_W,
-  h: MID_H,
-  doors: [
-    { x: MEET_X + 8, y: MID_Y },
-    { x: MEET_X + 8, y: MID_Y + MID_H - 1 },
-  ],
-  desks: [],
-  loiter: [
-    { x: MEET_X + 2, y: MID_Y + 10 },
-    { x: MEET_X + 13, y: MID_Y + 10 },
-  ],
-};
-
-/** 회의실 좌석 6개 (테이블 위·아래) */
-export const MEETING_SEATS: Pt[] = [
-  { x: MEET_X + 4, y: MID_Y + 4 },
-  { x: MEET_X + 7, y: MID_Y + 4 },
-  { x: MEET_X + 10, y: MID_Y + 4 },
-  { x: MEET_X + 4, y: MID_Y + 8 },
-  { x: MEET_X + 7, y: MID_Y + 8 },
-  { x: MEET_X + 10, y: MID_Y + 8 },
-];
-/** 회의 테이블 윗줄 좌석은 아래를 보고, 아랫줄은 위를 본다 */
-export const MEETING_TABLE_Y = MID_Y + 6;
-
-const LOUNGE_X = 65;
-export const LOUNGE_ROOM: Room = {
-  id: "lounge",
-  name: "AI 라운지",
-  short: "lounge.chill",
-  icon: "☕",
-  kind: "lounge",
-  x: LOUNGE_X,
-  y: MID_Y,
-  w: 8,
-  h: MID_H,
-  doors: [
-    { x: LOUNGE_X + 3, y: MID_Y },
-    { x: LOUNGE_X + 3, y: MID_Y + MID_H - 1 },
-  ],
-  desks: [],
-  loiter: [
-    { x: LOUNGE_X + 2, y: MID_Y + 3 },
-    { x: LOUNGE_X + 5, y: MID_Y + 3 },
-    { x: LOUNGE_X + 2, y: MID_Y + 6 },
-    { x: LOUNGE_X + 5, y: MID_Y + 9 },
-    { x: LOUNGE_X + 3, y: MID_Y + 10 },
-  ],
-};
-
-// ── 아랫줄: 공유 부서 방 9개 (5 + 4) ────────────────────
+// ── 바깥 링: 부서 9 + 헤르메스 + 회의실 + 라운지 (13슬롯 중 아래 1칸은 출입구) ──
+const OUTER_RX = 44;
+const OUTER_RY = 38;
 const DEPT_W = 13;
-const DEPT_H = 13;
-const DEPT_SLOTS: Pt[] = [
-  { x: 2, y: 27 },
-  { x: 16, y: 27 },
-  { x: 30, y: 27 },
-  { x: 44, y: 27 },
-  { x: 58, y: 27 },
-  { x: 9, y: 41 },
-  { x: 23, y: 41 },
-  { x: 37, y: 41 },
-  { x: 51, y: 41 },
-];
+const DEPT_H = 12;
+const SLOT_COUNT = 13;
+/** 시계방향 슬롯 순서. 맨 아래(90°)는 비워서 출입구 통로로 쓴다 */
+const OUTER_ORDER = ["hermes", "dev", "plan", "design", "mkt", "ad", "meeting", null, "lounge", "ops", "legal", "sec", "aios"] as const;
+
+function outerSlot(index: number): Pt {
+  // index 7 이 정확히 90°(아래) 가 되도록 맞춘다
+  const angle = 90 + (index - 7) * (360 / SLOT_COUNT);
+  return ringSlot(angle, OUTER_RX, OUTER_RY);
+}
 
 const SHARED_DEPTS = DEPARTMENTS.filter((d) => d.id !== "hermes");
 
-function deptRoom(index: number): Room {
-  const meta = SHARED_DEPTS[index];
-  const { x, y } = DEPT_SLOTS[index];
-  const n = staffCount((s) => s.dept === meta.id);
-  const desks = deskGrid(x, y, DEPT_W, [3, 6, 9], n);
+function deptRoom(id: string, slot: number): Room {
+  const meta = DEPARTMENTS.find((d) => d.id === id)!;
+  const n = staffCount((s) => s.dept === id);
+  const { x, y } = placeRoom(outerSlot(slot), DEPT_W, DEPT_H);
+  const desks = deskGrid(x, y, DEPT_W, [2, 5, 8], n);
   const rows = Math.ceil(desks.length / 3);
-  const loiter: Pt[] = [{ x: x + 11, y: y + 5 }, { x: x + 11, y: y + 8 }, { x: x + 4, y: y + 11 }, { x: x + 8, y: y + 11 }];
-  for (let r = rows; r < 3; r += 1) loiter.push({ x: x + 3, y: y + 3 + r * 3 }, { x: x + 8, y: y + 3 + r * 3 });
+  const loiter: Pt[] = [{ x: x + 11, y: y + 4 }, { x: x + 11, y: y + 7 }, { x: x + 4, y: y + 10 }, { x: x + 8, y: y + 10 }];
+  for (let r = rows; r < 3; r += 1) loiter.push({ x: x + 3, y: y + 2 + r * 3 }, { x: x + 8, y: y + 2 + r * 3 });
   return {
-    id: meta.id,
+    id,
     name: meta.name,
     short: meta.short,
     icon: meta.icon,
@@ -261,30 +184,85 @@ function deptRoom(index: number): Room {
     y,
     w: DEPT_W,
     h: DEPT_H,
-    doors: [
-      { x: x + 6, y },
-      { x: x + 6, y: y + DEPT_H - 1 },
-    ],
+    doors: [doorToward(x, y, DEPT_W, DEPT_H, CENTER)],
     desks,
     loiter,
   };
 }
 
-export const SHARED_ROOMS: Room[] = SHARED_DEPTS.map((_, i) => deptRoom(i));
+const MEET_W = 15;
+const MEET_H = 12;
+export const MEETING_ROOM: Room = (() => {
+  const { x, y } = placeRoom(outerSlot(OUTER_ORDER.indexOf("meeting")), MEET_W, MEET_H);
+  return {
+    id: "meeting",
+    name: "분담·검토 회의실",
+    short: "meeting.hall",
+    icon: "💬",
+    kind: "meeting",
+    x,
+    y,
+    w: MEET_W,
+    h: MEET_H,
+    doors: [doorToward(x, y, MEET_W, MEET_H, CENTER)],
+    desks: [],
+    loiter: [
+      { x: x + 2, y: y + 10 },
+      { x: x + 12, y: y + 10 },
+    ],
+  };
+})();
+/** 회의실 좌석 6개 (테이블 위·아래) */
+export const MEETING_SEATS: Pt[] = [
+  { x: MEETING_ROOM.x + 4, y: MEETING_ROOM.y + 3 },
+  { x: MEETING_ROOM.x + 7, y: MEETING_ROOM.y + 3 },
+  { x: MEETING_ROOM.x + 10, y: MEETING_ROOM.y + 3 },
+  { x: MEETING_ROOM.x + 4, y: MEETING_ROOM.y + 7 },
+  { x: MEETING_ROOM.x + 7, y: MEETING_ROOM.y + 7 },
+  { x: MEETING_ROOM.x + 10, y: MEETING_ROOM.y + 7 },
+];
+/** 회의 테이블 윗줄 좌석은 아래를 보고, 아랫줄은 위를 본다 */
+export const MEETING_TABLE_Y = MEETING_ROOM.y + 5;
+
+const LOUNGE_W = 10;
+const LOUNGE_H = 10;
+export const LOUNGE_ROOM: Room = (() => {
+  const { x, y } = placeRoom(outerSlot(OUTER_ORDER.indexOf("lounge")), LOUNGE_W, LOUNGE_H);
+  return {
+    id: "lounge",
+    name: "AI 라운지",
+    short: "lounge.chill",
+    icon: "☕",
+    kind: "lounge",
+    x,
+    y,
+    w: LOUNGE_W,
+    h: LOUNGE_H,
+    doors: [doorToward(x, y, LOUNGE_W, LOUNGE_H, CENTER)],
+    desks: [],
+    loiter: [
+      { x: x + 2, y: y + 2 },
+      { x: x + 6, y: y + 2 },
+      { x: x + 2, y: y + 6 },
+      { x: x + 7, y: y + 7 },
+      { x: x + 4, y: y + 8 },
+    ],
+  };
+})();
+
+export const HERMES_ROOM: Room = deptRoom("hermes", OUTER_ORDER.indexOf("hermes"));
+export const SHARED_ROOMS: Room[] = SHARED_DEPTS.map((d) => deptRoom(d.id, OUTER_ORDER.indexOf(d.id as (typeof OUTER_ORDER)[number])));
 /** 직원이 앉는 부서 방 (공유 부서 9 + 헤르메스) — deptStatus·명단의 기준 */
 export const DEPT_ROOMS: Room[] = [...SHARED_ROOMS, HERMES_ROOM];
-export const ROOMS: Room[] = [...PROJECT_ROOMS, CEO_ROOM, HERMES_ROOM, MIMIR_ROOM, MEETING_ROOM, LOUNGE_ROOM, ...SHARED_ROOMS];
+export const ROOMS: Room[] = [...PROJECT_ROOMS, CEO_ROOM, HERMES_ROOM, MEETING_ROOM, LOUNGE_ROOM, ...SHARED_ROOMS];
 
-/** 대표 책상 앞 보고 위치 */
-export const CEO_SEAT: Pt = CEO_ROOM.desks[0].seat;
-export const CEO_REPORT_SPOT: Pt = { x: CEO_SEAT.x, y: CEO_SEAT.y + 4 };
-/** 출입구 (출근·퇴근) */
-export const ENTRANCE: Pt = { x: 36, y: ROWS - 1 };
+/** 출입구 (출근·퇴근) — 바깥 링의 빈 슬롯 아래 */
+export const ENTRANCE: Pt = { x: CENTER.x, y: ROWS - 1 };
 
 /** 프로젝트 PM 책상 앞 (헤르메스가 요청을 전달하는 자리) */
 export function projectSpot(projectId: string): Pt {
   const room = roomOf(projectId);
-  const seat = room.desks[0]?.seat ?? { x: room.x + 2, y: room.y + 5 };
+  const seat = room.desks[0]?.seat ?? { x: room.x + 2, y: room.y + 4 };
   return { x: seat.x, y: seat.y + 1 };
 }
 
@@ -301,9 +279,8 @@ export type Prop = {
     | "rug"
     | "cabinet"
     | "whiteboard"
-    | "rack"
-    | "brain"
-    | "board";
+    | "board"
+    | "sphere";
   x: number;
   y: number;
   w: number;
@@ -325,35 +302,34 @@ for (const room of [...SHARED_ROOMS, HERMES_ROOM]) {
   for (const desk of room.desks) PROPS.push({ kind: "desk", x: desk.deskX, y: desk.deskY, w: 3, h: 1 });
   PROPS.push({ kind: "shelf", x: room.x + 1, y: room.y + 1, w: 3, h: 1 });
   PROPS.push({ kind: "plant", x: room.x + 11, y: room.y + 1, w: 1, h: 1 });
-  if (room.desks.length <= 6) PROPS.push({ kind: "cabinet", x: room.x + 9, y: room.y + 11, w: 2, h: 1 });
+  if (room.desks.length <= 6) PROPS.push({ kind: "cabinet", x: room.x + 9, y: room.y + 10, w: 2, h: 1 });
 }
 
-// 미미르: 서버 랙 네 귀퉁이 + 가운데 뇌 + 조회 단말
-PROPS.push({ kind: "rack", x: MIMIR_X + 1, y: MID_Y + 2, w: 4, h: 1 });
-PROPS.push({ kind: "rack", x: MIMIR_X + 12, y: MID_Y + 2, w: 4, h: 1 });
-PROPS.push({ kind: "rack", x: MIMIR_X + 1, y: MID_Y + 10, w: 4, h: 1 });
-PROPS.push({ kind: "rack", x: MIMIR_X + 12, y: MID_Y + 10, w: 4, h: 1 });
-PROPS.push({ kind: "brain", x: MIMIR_X + 7, y: MID_Y + 3, w: 3, h: 3, label: "MIMIR" });
-PROPS.push({ kind: "screen", x: MIMIR_X + 6, y: MID_Y + 9, w: 5, h: 1, label: "MEMORY" });
+// 미미르 구체 — 렌더링용. 충돌은 반지름으로 따로 계산한다
+PROPS.push({
+  kind: "sphere",
+  x: CENTER.x - MIMIR_RADIUS,
+  y: CENTER.y - MIMIR_RADIUS,
+  w: MIMIR_RADIUS * 2 + 1,
+  h: MIMIR_RADIUS * 2 + 1,
+  label: "MIMIR",
+});
 
 // 대표실
-PROPS.push({ kind: "ceo-desk", x: 6, y: MID_Y + 5, w: 5, h: 2 });
-PROPS.push({ kind: "rug", x: 5, y: MID_Y + 8, w: 7, h: 3 });
-PROPS.push({ kind: "plant", x: 3, y: MID_Y + 1, w: 1, h: 1 });
-PROPS.push({ kind: "plant", x: 13, y: MID_Y + 1, w: 1, h: 1 });
+PROPS.push({ kind: "ceo-desk", x: CEO_ROOM.x + 3, y: CEO_ROOM.y + 3, w: 5, h: 2 });
+PROPS.push({ kind: "rug", x: CEO_ROOM.x + 2, y: CEO_ROOM.y + 5, w: 7, h: 2 });
+PROPS.push({ kind: "plant", x: CEO_ROOM.x + 1, y: CEO_ROOM.y + 1, w: 1, h: 1 });
+PROPS.push({ kind: "plant", x: CEO_ROOM.x + 9, y: CEO_ROOM.y + 1, w: 1, h: 1 });
 
 // 회의실
-PROPS.push({ kind: "table", x: MEET_X + 3, y: MID_Y + 5, w: 10, h: 3 });
-PROPS.push({ kind: "screen", x: MEET_X + 2, y: MID_Y + 1, w: 5, h: 1, label: "SLACK" });
-PROPS.push({ kind: "whiteboard", x: MEET_X + 9, y: MID_Y + 1, w: 5, h: 1 });
-PROPS.push({ kind: "plant", x: MEET_X + 1, y: MID_Y + 11, w: 1, h: 1 });
-PROPS.push({ kind: "plant", x: MEET_X + 14, y: MID_Y + 11, w: 1, h: 1 });
+PROPS.push({ kind: "table", x: MEETING_ROOM.x + 3, y: MEETING_ROOM.y + 4, w: 9, h: 3 });
+PROPS.push({ kind: "screen", x: MEETING_ROOM.x + 2, y: MEETING_ROOM.y + 1, w: 5, h: 1, label: "SLACK" });
+PROPS.push({ kind: "whiteboard", x: MEETING_ROOM.x + 8, y: MEETING_ROOM.y + 1, w: 5, h: 1 });
 
 // 라운지
-PROPS.push({ kind: "sofa", x: LOUNGE_X + 1, y: MID_Y + 4, w: 5, h: 1 });
-PROPS.push({ kind: "coffee", x: LOUNGE_X + 5, y: MID_Y + 1, w: 2, h: 1, label: "☕" });
-PROPS.push({ kind: "table", x: LOUNGE_X + 2, y: MID_Y + 7, w: 3, h: 2 });
-PROPS.push({ kind: "plant", x: LOUNGE_X + 6, y: MID_Y + 11, w: 1, h: 1 });
+PROPS.push({ kind: "sofa", x: LOUNGE_ROOM.x + 1, y: LOUNGE_ROOM.y + 4, w: 5, h: 1 });
+PROPS.push({ kind: "coffee", x: LOUNGE_ROOM.x + 7, y: LOUNGE_ROOM.y + 1, w: 2, h: 1, label: "☕" });
+PROPS.push({ kind: "table", x: LOUNGE_ROOM.x + 6, y: LOUNGE_ROOM.y + 5, w: 2, h: 2 });
 
 /** 걷기 가능 여부 그리드 */
 function buildGrid(): Uint8Array {
@@ -388,9 +364,16 @@ function buildGrid(): Uint8Array {
 
   // 가구
   for (const prop of PROPS) {
-    if (prop.kind === "rug") continue;
+    if (prop.kind === "rug" || prop.kind === "sphere") continue;
     for (let y = prop.y; y < prop.y + prop.h; y += 1) {
       for (let x = prop.x; x < prop.x + prop.w; x += 1) block(x, y);
+    }
+  }
+
+  // 미미르 구체
+  for (let y = CENTER.y - MIMIR_RADIUS; y <= CENTER.y + MIMIR_RADIUS; y += 1) {
+    for (let x = CENTER.x - MIMIR_RADIUS; x <= CENTER.x + MIMIR_RADIUS; x += 1) {
+      if (Math.hypot(x - CENTER.x, y - CENTER.y) <= MIMIR_RADIUS) block(x, y);
     }
   }
 
@@ -418,8 +401,11 @@ export function roomOf(id: string): Room {
   return room;
 }
 
-/** 방 안쪽 문 앞 타일 (첫 번째 문 기준) */
+/** 문 바로 바깥 타일 (첫 번째 문 기준) */
 export function doorApproach(room: Room): Pt {
   const door = room.doors[0];
-  return door.y === room.y ? { x: door.x, y: door.y - 1 } : { x: door.x, y: door.y + 1 };
+  if (door.y === room.y) return { x: door.x, y: door.y - 1 };
+  if (door.y === room.y + room.h - 1) return { x: door.x, y: door.y + 1 };
+  if (door.x === room.x) return { x: door.x - 1, y: door.y };
+  return { x: door.x + 1, y: door.y };
 }

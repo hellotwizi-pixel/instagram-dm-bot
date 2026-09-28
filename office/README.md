@@ -38,9 +38,9 @@ HERMES_DESK_URL=http://127.0.0.1:64729 npm run dev
 
 | Hermes Desk | 픽셀 오피스 |
 |---|---|
-| `LABELS` 의 부서 9개 (개발·기획·디자인·마케팅·광고·운영·법무·보안·AI-OS 관리) | 부서 방 9개 |
-| 프로젝트 담당 PM 9명 (DMmate, ACE 인도어골프, 바베큐국립공원, 하하팩토리, 디토크, AI Council, 리워드드로우, Planning Board, 바로열기) | `프로젝트` 방 |
-| 미미르 (회사 기억, 원천 16종) | `미미르` 방 — 서버 랙과 뇌 단말. 직원이 조회하러 걸어감 |
+| `LABELS` 의 부서 9개 (개발·기획·디자인·마케팅·광고·운영·법무·보안·AI-OS 관리) | 바깥 링의 공유 부서 방 9개 |
+| 여섯 행성 (ACE 인도어골프, 바베큐국립공원, 하하팩토리, 디토크, DMmate, AI-OS 관리) | 안쪽 링의 프로젝트 방 6개, 각 방에 PM. 행성이 없는 담당 4명은 헤르메스 HQ |
+| 미미르 (회사 기억, 원천 16종) | 사무실 정중앙의 파란 구체. 직원이 조회하러 걸어가고, 일하는 방으로 지식 입자가 흐름 |
 | 헤르메스 (요청 접수·분담·결과 회수) + `default`·`reviewer` 프로필 | `헤르메스` 방 — 지시창 답변자, 배달부 |
 | 에이전트 프로필 47개 (`devpm`, `devcoder`, …) | 직원 47명, `callsign` = 프로필 id |
 | 작업 상태 `todo/running/blocked/done…` | 작업 중 / 확인 필요 / 차단 / 대기 / 완료 |
@@ -72,7 +72,7 @@ HERMES_DESK_URL=http://127.0.0.1:64729 npm run dev
 
 1. **부서 `id`는 바꾸지 마세요** (`dev plan design mkt ad ops legal sec aios pm mimir hermes`).
    시나리오(`src/game/sim.ts`)가 이 id로 캐릭터를 움직입니다. `name · icon · short · task · report · liveGroups` 는 자유입니다.
-2. **부서는 12개를 유지하세요.** 사무실 배치가 4열 3행 고정입니다. 방 하나에 직원은 최대 12명(책상 4×3줄)입니다.
+2. **프로젝트 6개 · 부서 9개 + 헤르메스** 를 유지하세요. 원형 배치의 칸 수가 고정입니다. 배치를 바꿨으면 `npx tsx scripts/check-world.ts` 로 방 겹침·도달 가능 여부를 확인하세요.
 
 ## 구조
 
@@ -86,7 +86,7 @@ office/
 │   └── game/
 │       ├── sim.ts        ← 시나리오 + 직원 상태머신 + 실시간 반영(applyLive)
 │       ├── live.ts       ← Hermes Desk 연결 (토큰 → 3초 조회)
-│       ├── world.ts      ← 타일 맵, 방, 책상(인원수에 맞춰 1~3줄), 미미르 방
+│       ├── world.ts      ← 원형 타일 맵: 중앙 미미르 구체+대표실, 안쪽 프로젝트 링, 바깥 부서 링
 │       ├── pathfinding.ts
 │       ├── staff.ts      ← config → 직원 데이터, 프로필 id 색인
 │       ├── report.ts     ← 보고서 생성 (서버 없으면 콘솔 출력)

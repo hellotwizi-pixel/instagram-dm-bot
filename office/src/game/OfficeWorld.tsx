@@ -111,7 +111,7 @@ const PropLayer = memo(function PropLayer() {
           }
         >
           {prop.kind === "desk" ? <i className="pr-monitor" /> : null}
-          {prop.kind === "brain" ? <i className="pr-brain-core" /> : null}
+          {prop.kind === "sphere" ? <i /> : null}
           {prop.label ? <span>{prop.label}</span> : null}
         </div>
       ))}
@@ -151,6 +151,7 @@ export default function OfficeWorld({ engine, snap, selectedId, follow, onSelect
 
   /** 카메라가 비출 지점 — 회의실 > 대표실 > 작업 중인 부서 > 출근 시 입구 */
   const focus = useMemo(() => {
+    if (hotRoom === "mimir") return { x: MIMIR_CENTER.x * TILE, y: MIMIR_CENTER.y * TILE };
     if (hotRoom) {
       const room = roomOf(hotRoom);
       return { x: (room.x + room.w / 2) * TILE, y: (room.y + room.h / 2) * TILE };

@@ -967,11 +967,20 @@ export class Company {
   }
 
   private deptReport(deptId: string, question: string) {
+    const lines: string[] = [];
+    if (deptId === "mimir") {
+      const status = this.deptStatus.mimir;
+      lines.push(`미미르는 직원이 아니라 회사 기억이에요. 원천 ${MIMIR_SOURCES.length}종: ${MIMIR_SOURCES.slice(0, 6).join(" · ")} 외.`);
+      lines.push(status === "작업 중" ? "지금 누군가 조회 중이에요." : "조회 요청이 오면 저장된 결정·자료를 돌려줍니다. 숫자는 실제 적재 기록에서만 읽어요.");
+      this.pushChat("staff", HERMES, lines.join("\n"));
+      this.spotlightRoom("mimir", 8);
+      this.pushLog("🎤", "대표 지시: 미미르 상태 확인", "yellow");
+      return;
+    }
     const room = roomOf(deptId);
     const lead = this.leadOf(deptId);
     const status = this.statusOf(deptId);
     const crew = PROJECT_IDS.has(deptId) ? this.agents.filter((a) => a.project === deptId) : this.deptAgents(deptId);
-    const lines: string[] = [];
 
     if (PROJECT_IDS.has(deptId)) {
       const working = crew.filter((a) => a.rank !== "ceo" && PROJECT_PM[deptId]?.id !== a.id);
@@ -989,15 +998,6 @@ export class Company {
       }
       this.spotlightRoom(deptId, 8);
       this.pushLog("🎤", `대표 지시: ${room.name} 프로젝트 확인`, "yellow");
-      return;
-    }
-
-    if (deptId === "mimir") {
-      lines.push(`미미르는 직원이 아니라 회사 기억이에요. 원천 ${MIMIR_SOURCES.length}종: ${MIMIR_SOURCES.slice(0, 6).join(" · ")} 외.`);
-      lines.push(status === "작업 중" ? "지금 누군가 조회 중이에요." : "조회 요청이 오면 저장된 결정·자료를 돌려줍니다. 숫자는 실제 적재 기록에서만 읽어요.");
-      this.pushChat("staff", HERMES, lines.join("\n"));
-      this.spotlightRoom("mimir", 8);
-      this.pushLog("🎤", "대표 지시: 미미르 상태 확인", "yellow");
       return;
     }
 
