@@ -32,6 +32,7 @@ import {
   type Room,
 } from "./world";
 import { PROJECTS } from "../../company.config";
+import { heightOf, loadKit, place, type Kit } from "./models";
 
 const PROJECT_COLOR: Record<string, string> = Object.fromEntries(PROJECTS.map((p) => [p.id, p.color]));
 
@@ -440,10 +441,14 @@ function buildRoom(room: Room, scene: THREE.Scene, mats: ReturnType<typeof makeM
   return { floor, frame };
 }
 
-function buildProp(prop: Prop, scene: THREE.Scene, mats: ReturnType<typeof makeMaterials>) {
+function buildProp(prop: Prop, scene: THREE.Scene, mats: ReturnType<typeof makeMaterials>, kit: Kit | null) {
   const g = new THREE.Group();
   const cx = prop.x + prop.w / 2;
   const cz = prop.y + prop.h / 2;
+  if (kit && buildKitProp(prop, g, kit, mats)) {
+    scene.add(g);
+    return;
+  }
   switch (prop.kind) {
     case "desk": {
       addBox(g, prop.w - 0.15, 0.08, prop.h - 0.2, cx, 0.72, cz, mats.deskTop);
@@ -552,6 +557,96 @@ function buildProp(prop: Prop, scene: THREE.Scene, mats: ReturnType<typeof makeM
       break;
     default:
       break;
+  }
+  scene.add(g);
+}
+
+/** Kenney 가구 키트로 놓을 수 있는 가구. 못 놓는 종류(스크린·화이트보드·게시판·리액터)는 false → 절차적 가구 */
+function buildKitProp(prop: Prop, g: THREE.Group, kit: Kit, mats: ReturnType<typeof makeMaterials>): boolean {
+  const cx = prop.x + prop.w / 2;
+  const cz = prop.y + prop.h / 2;
+  switch (prop.kind) {
+    case "desk": {
+      // 책상은 3칸 폭. 자리는 아래쪽(+z) 이라 모니터는 위쪽, 의자는 아래쪽
+      place(g, kit, "desk", cx, cz);
+      const top = heightOf(kit, "desk");
+      place(g, kit, "computerScreen", cx, cz - 0.18, { y: top, rotY: 0 });
+      place(g, kit, "computerKeyboard", cx, cz + 0.12, { y: top });
+      place(g, kit, "chairDesk", cx, cz + 1, { rotY: Math.PI });
+      place(g, kit, prop.x % 2 ? "books" : "plantSmall2", prop.x + 0.45, cz, { y: top, rotY: Math.PI / 2 });
+      return true;
+    }
+    case "ceo-desk": {
+      place(g, kit, "desk", cx, cz, { scale: 1.6, rotY: Math.PI });
+      const top = heightOf(kit, "desk", 1.6);
+      place(g, kit, "laptop", cx, cz + 0.1, { y: top, rotY: Math.PI });
+      place(g, kit, "plantSmall2", cx + 1.4, cz, { y: top });
+      place(g, kit, "books", cx - 1.4, cz, { y: top });
+      // 대표 의자는 책상 위쪽(-z), 아래쪽(+z)을 본다
+      place(g, kit, "chairDesk", cx, cz - 1.15, { scale: 1.15 });
+      return true;
+    }
+    case "table": {
+      if (prop.w >= 8) {
+        // 회의 테이블: 큰 십자 다리 테이블 + 위·아래 의자
+        place(g, kit, "tableCross", cx, cz, { scale: 1.3 });
+        for (const dx of [-3, 0, 3]) {
+          place(g, kit, "chairModernCushion", cx + dx, prop.y - 0.5, { rotY: 0 });
+          place(g, kit, "chairModernCushion", cx + dx, prop.y + prop.h + 0.5, { rotY: Math.PI });
+        }
+      } else {
+        place(g, kit, "tableCoffee", cx, cz, { scale: 1.2 });
+      }
+      return true;
+    }
+    case "sofa": {
+      // 5칸 폭: 소파 두 개 나란히. 등받이는 위쪽(-z)
+      const n = Math.max(1, Math.round(prop.w / 2.4));
+      for (let i = 0; i < n; i += 1) place(g, kit, "loungeSofa", prop.x + (i + 0.5) * (prop.w / n), cz, { scale: 1.15 });
+      return true;
+    }
+    case "coffee": {
+      place(g, kit, "kitchenBar", cx, cz, { fit: { w: prop.w - 0.2, d: prop.h - 0.2 } });
+      place(g, kit, "kitchenCoffeeMachine", cx, cz, { y: heightOf(kit, "kitchenBar") });
+      return true;
+    }
+    case "plant": {
+      place(g, kit, "pottedPlant", cx, cz, { rotY: (prop.x * 7 + prop.y * 3) % 6 });
+      return true;
+    }
+    case "shelf": {
+      const n = Math.max(1, Math.round(prop.w / 0.9));
+      for (let i = 0; i < n; i += 1) place(g, kit, "bookcaseOpen", prop.x + (i + 0.5) * (prop.w / n), cz);
+      return true;
+    }
+    case "cabinet": {
+      place(g, kit, "cabinetTelevision", cx, cz, { rotY: Math.PI });
+      return true;
+    }
+    case "rug": {
+      place(g, kit, "rugRectangle", cx, cz, { y: 0.09, fit: { w: prop.w, d: prop.h } });
+      return true;
+    }
+    default:
+      return false;
+  }
+  void mats;
+}
+
+/** 섬 장식: 광장 벤치·가로등, 대로 끝 가로등 */
+function buildDecor(scene: THREE.Scene, kit: Kit) {
+  const g = new THREE.Group();
+  const plaza = ISLANDS.find((i) => i.kind === "plaza");
+  if (plaza) {
+    place(g, kit, "bench", plaza.x + 2.5, plaza.y + plaza.h - 1.5, { rotY: 0 });
+    place(g, kit, "bench", plaza.x + plaza.w - 2.5, plaza.y + plaza.h - 1.5, { rotY: 0 });
+    place(g, kit, "lampRoundFloor", plaza.x + 1, plaza.y + plaza.h - 1);
+    place(g, kit, "lampRoundFloor", plaza.x + plaza.w - 1, plaza.y + plaza.h - 1);
+  }
+  for (const island of ISLANDS) {
+    if (island.kind === "project" || island.kind === "plaza") continue;
+    place(g, kit, "lampRoundFloor", island.x + 1, island.y + 1);
+    place(g, kit, "lampRoundFloor", island.x + island.w - 1, island.y + island.h - 1);
   }
   scene.add(g);
 }
@@ -751,7 +846,13 @@ export default function OfficeWorld({ engine, snap, selectedId, follow, onSelect
     // 방·가구·리액터
     const roomMeshes = new Map<string, { floor: THREE.Mesh; frame: THREE.Mesh }>();
     for (const room of ROOMS) roomMeshes.set(room.id, buildRoom(room, scene, mats));
-    for (const prop of PROPS) buildProp(prop, scene, mats);
+    // 가구: Kenney 키트를 읽어서 놓고, 실패하면 절차적 가구
+    let disposed = false;
+    loadKit().then((kit) => {
+      if (disposed) return;
+      for (const prop of PROPS) buildProp(prop, scene, mats, kit);
+      if (kit) buildDecor(scene, kit);
+    });
     const reactor = buildReactor(scene);
 
     // 아바타
@@ -845,6 +946,9 @@ export default function OfficeWorld({ engine, snap, selectedId, follow, onSelect
     ro.observe(mount);
 
     const reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    // 디버그: ?view=x,z,zoom 으로 카메라 고정 (스크린샷 확인용)
+    const debugView = (new URLSearchParams(location.search).get("view") ?? "").split(",").map(Number).filter((n) => Number.isFinite(n));
+    if (debugView.length !== 3) debugView.length = 0;
     const tmpTarget = new THREE.Vector3();
     const tmpCam = new THREE.Vector3();
     let raf = 0;
@@ -855,7 +959,11 @@ export default function OfficeWorld({ engine, snap, selectedId, follow, onSelect
       const s = snapRef.current;
 
       // 카메라: 가까이 + 자동 추적이면 초점으로 스르륵
-      if (zoomRef.current === "close" && followRef.current && focusRef.current) {
+      if (debugView.length === 3) {
+        controls.target.set(debugView[0], 0, debugView[1]);
+        camera.zoom = debugView[2];
+        camera.updateProjectionMatrix();
+      } else if (zoomRef.current === "close" && followRef.current && focusRef.current) {
         tmpTarget.set(focusRef.current.x, 0, focusRef.current.z);
         controls.target.lerp(tmpTarget, 0.04);
         camera.zoom += (3.2 - camera.zoom) * 0.04;
@@ -1029,6 +1137,7 @@ export default function OfficeWorld({ engine, snap, selectedId, follow, onSelect
       ro.disconnect();
       renderer.domElement.removeEventListener("pointerdown", onDown);
       renderer.domElement.removeEventListener("pointerup", onUp);
+      disposed = true;
       controls.dispose();
       composer.dispose();
       renderer.dispose();
