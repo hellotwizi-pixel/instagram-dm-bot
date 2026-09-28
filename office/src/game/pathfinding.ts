@@ -1,5 +1,5 @@
 // A* 경로 탐색 (4방향) — 오피스 타일 그리드 전용
-import { COLS, ROWS, walkable, type Pt } from "./world";
+import { COLS, ROWS, stepCost, walkable, type Pt } from "./world";
 
 const DIRS = [
   [0, -1],
@@ -70,8 +70,8 @@ export function findPath(from: Pt, to: Pt, blocked?: Set<number>): Pt[] {
       if (!walkable(nx, ny)) continue;
       const next = idx(nx, ny);
       if (closed[next]) continue;
-      // 다른 직원이 서 있는 칸은 비용을 크게 매겨 자연스럽게 돌아가게 한다
-      const cost = blocked?.has(next) && next !== goal ? 6 : 1;
+      // 복도 밖 바닥은 비싸게, 다른 직원이 서 있는 칸은 더 비싸게 매겨 자연스럽게 돌아가게 한다
+      const cost = (blocked?.has(next) && next !== goal ? 6 : 0) + stepCost(nx, ny);
       const tentative = gScore[current] + cost;
       if (tentative >= gScore[next]) continue;
       came[next] = current;

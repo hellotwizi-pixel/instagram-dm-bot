@@ -4,15 +4,19 @@ import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { REPORT_PHASE, type Agent, type Company, type DeptStatus, type Snapshot } from "./sim";
 import {
   CEO_ROOM,
+  COLS,
+  CORRIDOR,
   ENTRANCE,
   MEETING_ROOM,
   MIMIR_CENTER,
   PROPS,
   ROOMS,
   TILE,
+  ROWS,
   WORLD_H,
   WORLD_W,
   roomOf,
+  walkable,
 } from "./world";
 import { PROJECTS } from "../../company.config";
 
@@ -93,6 +97,55 @@ const AgentLayer = memo(function AgentLayer({
   );
 });
 
+/** 바닥 — 카펫 위에 복도 타일을 밝게 깐다. 한 번만 그린다 */
+const FloorLayer = memo(function FloorLayer() {
+  const ref = useRef<HTMLCanvasElement>(null);
+  useEffect(() => {
+    const canvas = ref.current;
+    const ctx = canvas?.getContext("2d");
+    if (!canvas || !ctx) return;
+    ctx.fillStyle = "#161b25";
+    ctx.fillRect(0, 0, WORLD_W, WORLD_H);
+    // 카펫 결
+    ctx.strokeStyle = "rgba(255,255,255,0.025)";
+    ctx.lineWidth = 1;
+    for (let d = -WORLD_H; d < WORLD_W; d += 6) {
+      ctx.beginPath();
+      ctx.moveTo(d, 0);
+      ctx.lineTo(d + WORLD_H, WORLD_H);
+      ctx.stroke();
+    }
+    // 복도 타일
+    for (let y = 0; y < ROWS; y += 1) {
+      for (let x = 0; x < COLS; x += 1) {
+        if (!CORRIDOR[y * COLS + x] || !walkable(x, y)) continue;
+        ctx.fillStyle = "#252c3a";
+        ctx.fillRect(x * TILE, y * TILE, TILE, TILE);
+        ctx.strokeStyle = "rgba(255,255,255,0.06)";
+        ctx.strokeRect(x * TILE + 0.5, y * TILE + 0.5, TILE - 1, TILE - 1);
+      }
+    }
+    // 복도 가장자리 라인 (시안 안내선)
+    ctx.strokeStyle = "rgba(80,214,255,0.22)";
+    ctx.lineWidth = 1.5;
+    for (let y = 0; y < ROWS; y += 1) {
+      for (let x = 0; x < COLS; x += 1) {
+        if (!CORRIDOR[y * COLS + x]) continue;
+        const px = x * TILE;
+        const py = y * TILE;
+        const edge = (nx: number, ny: number) => nx < 0 || ny < 0 || nx >= COLS || ny >= ROWS || (!CORRIDOR[ny * COLS + nx] && walkable(nx, ny));
+        ctx.beginPath();
+        if (edge(x, y - 1)) { ctx.moveTo(px, py + 1); ctx.lineTo(px + TILE, py + 1); }
+        if (edge(x, y + 1)) { ctx.moveTo(px, py + TILE - 1); ctx.lineTo(px + TILE, py + TILE - 1); }
+        if (edge(x - 1, y)) { ctx.moveTo(px + 1, py); ctx.lineTo(px + 1, py + TILE); }
+        if (edge(x + 1, y)) { ctx.moveTo(px + TILE - 1, py); ctx.lineTo(px + TILE - 1, py + TILE); }
+        ctx.stroke();
+      }
+    }
+  }, []);
+  return <canvas ref={ref} className="world-floor-canvas" width={WORLD_W} height={WORLD_H} aria-hidden="true" />;
+});
+
 const PropLayer = memo(function PropLayer() {
   return (
     <>
@@ -111,7 +164,13 @@ const PropLayer = memo(function PropLayer() {
           }
         >
           {prop.kind === "desk" ? <i className="pr-monitor" /> : null}
-          {prop.kind === "sphere" ? <i /> : null}
+          {prop.kind === "reactor" ? (
+            <>
+              <i className="rx-housing" />
+              <i className="rx-struts" />
+              <i className="rx-core" />
+            </>
+          ) : null}
           {prop.label ? <span>{prop.label}</span> : null}
         </div>
       ))}
@@ -352,6 +411,7 @@ export default function OfficeWorld({ engine, snap, selectedId, follow, onSelect
       >
         <div className="world-stage" ref={stageRef} style={{ width: WORLD_W, height: WORLD_H }}>
           <div className="world-floor" />
+          <FloorLayer />
 
           {ROOMS.map((room) => {
             const status = room.kind === "project" ? snap.projectStatus[room.id] : snap.deptStatus[room.id];

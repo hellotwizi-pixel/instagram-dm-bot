@@ -101,7 +101,7 @@
   overflow: hidden;
   border: 2px solid var(--ink);
   border-radius: 14px;
-  background: #03050a;
+  background: #0e121a;
   box-shadow: var(--shadow);
 }
 .world-viewport {
@@ -111,9 +111,7 @@
   cursor: grab;
   touch-action: none;
   background:
-    radial-gradient(circle at 50% 45%, rgba(80, 214, 255, .16), transparent 45%),
-    radial-gradient(circle at 80% 85%, rgba(139, 124, 255, .12), transparent 55%),
-    #03050a;
+    #0e121a;
 }
 .world-viewport:active { cursor: grabbing; }
 .world-stage { position: absolute; left: 0; top: 0; transform-origin: 0 0; will-change: transform; }
@@ -121,25 +119,21 @@
   position: absolute;
   inset: 0;
   border-radius: 6px;
-  background-color: #0a1120;
-  background-image:
-    radial-gradient(circle at 50% 48%, rgba(80, 214, 255, .22), transparent 42%),
-    linear-gradient(rgba(80, 214, 255, .07) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(80, 214, 255, .07) 1px, transparent 1px);
-  background-size: 100% 100%, 18px 18px, 18px 18px;
-  box-shadow: inset 0 0 120px rgba(0, 0, 0, .7);
+  background-color: #161b25;
+  box-shadow: inset 0 0 120px rgba(0, 0, 0, .6);
 }
 
 .rm {
   position: absolute;
-  border: 2px solid var(--ink);
-  border-radius: 8px;
-  background: #101a2e;
-  box-shadow: inset 0 0 0 2px rgba(80, 214, 255, .08), 4px 5px 0 rgba(0, 0, 0, .5);
+  border: 2px solid #46536a;
+  border-radius: 6px;
+  background: #1f2634;
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, .05), inset 0 14px 30px rgba(255, 255, 255, .03), 4px 5px 0 rgba(0, 0, 0, .45);
 }
-.rm-ceo { background: #17233d; border-color: var(--yellow); box-shadow: inset 0 0 0 2px rgba(255, 207, 110, .15), 0 0 24px rgba(255, 207, 110, .18); }
-.rm-meeting { background: #14192f; }
-.rm-lounge { background: #0f2321; }
+.world-floor-canvas { position: absolute; left: 0; top: 0; pointer-events: none; }
+.rm-ceo { background: #262a33; border-color: var(--yellow); box-shadow: inset 0 0 0 1px rgba(255, 207, 110, .15), 0 0 18px rgba(255, 207, 110, .15); }
+.rm-meeting { background: #1c2230; }
+.rm-lounge { background: #1e2a28; }
 .rm.working { background: #1f2412; }
 .rm.done { background: #0f2a26; }
 .rm.approval { background: #2a1a2e; }
@@ -220,7 +214,7 @@
 .pr-whiteboard { background: #1a2338; }
 .pr-shelf { background: #2a3450; }
 .pr-cabinet { background: #22304a; }
-.rm-project { border-top: 6px solid var(--room-color); background: #101a2e; box-shadow: inset 0 0 0 2px rgba(80, 214, 255, .06), 0 0 18px color-mix(in srgb, var(--room-color) 35%, transparent), 4px 5px 0 rgba(0, 0, 0, .5); }
+.rm-project { border-top: 6px solid var(--room-color); background: #1f2634; box-shadow: inset 0 0 0 1px rgba(255, 255, 255, .05), 0 0 14px color-mix(in srgb, var(--room-color) 25%, transparent), 4px 5px 0 rgba(0, 0, 0, .45); }
 .rm-project .rm-head { background: var(--room-color); color: #fff; }
 .rm-project.working { background: #1f2412; }
 .rm-project.done { background: #0f2a26; }
@@ -590,63 +584,48 @@
   .world-viewport { height: 58vh; }
 }
 
-/* ── 미미르 구체 (3D 느낌의 CSS 구) ───────────────────── */
-.pr-sphere {
+.live-clock.live span { color: var(--pink); }
+
+/* ── 미미르 아크 리액터 (위에서 내려다본 모습) ────────────── */
+.pr-reactor {
   border-radius: 50%;
-  background:
-    radial-gradient(circle at 32% 28%, rgba(255, 255, 255, .95) 0, rgba(210, 240, 255, .8) 6%, transparent 22%),
-    radial-gradient(circle at 40% 35%, #8fe3ff 0, #2f9df0 30%, #0d4fb0 62%, #061a48 88%, #030b22 100%);
-  box-shadow:
-    inset -14px -18px 34px rgba(0, 0, 0, .55),
-    inset 8px 10px 22px rgba(160, 230, 255, .35),
-    0 0 0 3px rgba(80, 214, 255, .25),
-    0 0 40px rgba(80, 214, 255, .55),
-    0 0 110px rgba(31, 182, 240, .35);
-  animation: spherePulse 3.2s ease-in-out infinite;
+  background: radial-gradient(circle, #0b1220 0, #141a26 55%, #1b2230 70%, #0c1018 100%);
+  box-shadow: 0 0 0 3px #3a4658, 0 0 0 5px #0b0f16, 0 0 28px rgba(80, 214, 255, .45), 0 0 80px rgba(80, 214, 255, .2);
   display: grid;
   place-items: end center;
-  padding-bottom: 8px;
+  padding-bottom: 6px;
   font-family: "Archivo", sans-serif;
-  font-size: 10px;
+  font-size: 9px;
   font-weight: 900;
   letter-spacing: .3em;
-  color: rgba(220, 245, 255, .9);
-  text-shadow: 0 0 8px #50d6ff;
+  color: rgba(200, 240, 255, .8);
+  text-shadow: 0 0 6px #50d6ff;
 }
-.pr-sphere::before, .pr-sphere::after {
-  content: "";
-  position: absolute;
-  left: 50%;
-  top: 50%;
-  width: 150%;
-  height: 46%;
-  border: 2px solid rgba(160, 230, 255, .55);
-  border-radius: 50%;
-  box-shadow: 0 0 10px rgba(80, 214, 255, .5);
-  transform: translate(-50%, -50%) rotateX(72deg);
-  animation: ringSpin 9s linear infinite;
-  pointer-events: none;
-}
-.pr-sphere::after {
-  width: 128%;
-  height: 128%;
-  border-color: rgba(255, 207, 110, .45);
-  transform: translate(-50%, -50%) rotate(-28deg);
-  animation: ringSpin2 14s linear infinite;
-}
-.pr-sphere i {
-  position: absolute;
-  inset: 0;
-  border-radius: 50%;
+.pr-reactor > i { position: absolute; border-radius: 50%; pointer-events: none; }
+/* 바깥 하우징: 금속 링 + 10개 홈 */
+.pr-reactor .rx-housing {
+  inset: 8%;
   background:
-    radial-gradient(circle at 62% 60%, rgba(80, 214, 255, .7) 0, transparent 5%),
-    radial-gradient(circle at 30% 65%, rgba(80, 214, 255, .6) 0, transparent 4%),
-    radial-gradient(circle at 55% 25%, rgba(255, 255, 255, .7) 0, transparent 4%),
-    radial-gradient(circle at 72% 40%, rgba(80, 214, 255, .6) 0, transparent 4%);
-  animation: sphereSpin 18s linear infinite;
+    repeating-conic-gradient(from 0deg, #2b3446 0 22deg, #0d1219 22deg 36deg),
+    #2b3446;
+  box-shadow: inset 0 0 0 4px #3a4658, inset 0 0 0 6px #0d1219, 0 0 0 2px #0d1219;
+  animation: rxSpin 30s linear infinite;
 }
-@keyframes spherePulse { 50% { box-shadow: inset -14px -18px 34px rgba(0, 0, 0, .55), inset 8px 10px 22px rgba(160, 230, 255, .35), 0 0 0 6px rgba(80, 214, 255, .12), 0 0 60px rgba(80, 214, 255, .75), 0 0 140px rgba(31, 182, 240, .45); } }
-@keyframes ringSpin { to { transform: translate(-50%, -50%) rotateX(72deg) rotate(360deg); } }
-@keyframes ringSpin2 { to { transform: translate(-50%, -50%) rotate(332deg); } }
-@keyframes sphereSpin { to { transform: rotate(360deg); } }
-.live-clock.live span { color: var(--pink); }
+/* 가운데 스트럿 3개 + 파란 코일 */
+.pr-reactor .rx-struts {
+  inset: 22%;
+  background:
+    repeating-conic-gradient(from 0deg, transparent 0 112deg, #3a4658 112deg 120deg),
+    radial-gradient(circle, transparent 58%, rgba(80, 214, 255, .95) 60%, rgba(80, 214, 255, .35) 68%, transparent 74%);
+  box-shadow: inset 0 0 18px rgba(80, 214, 255, .5);
+  animation: rxSpin 18s linear infinite reverse;
+}
+/* 코어 */
+.pr-reactor .rx-core {
+  inset: 34%;
+  background: radial-gradient(circle, #ffffff 0, #d6f6ff 18%, #50d6ff 45%, #1a7fc0 70%, rgba(26, 127, 192, 0) 100%);
+  box-shadow: 0 0 22px #50d6ff, 0 0 50px rgba(80, 214, 255, .8);
+  animation: rxPulse 1.8s ease-in-out infinite;
+}
+@keyframes rxSpin { to { transform: rotate(360deg); } }
+@keyframes rxPulse { 50% { box-shadow: 0 0 34px #9fe8ff, 0 0 80px rgba(80, 214, 255, .95); transform: scale(1.06); } }

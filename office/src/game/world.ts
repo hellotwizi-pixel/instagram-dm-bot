@@ -280,7 +280,7 @@ export type Prop = {
     | "cabinet"
     | "whiteboard"
     | "board"
-    | "sphere";
+    | "reactor";
   x: number;
   y: number;
   w: number;
@@ -307,7 +307,7 @@ for (const room of [...SHARED_ROOMS, HERMES_ROOM]) {
 
 // 미미르 구체 — 렌더링용. 충돌은 반지름으로 따로 계산한다
 PROPS.push({
-  kind: "sphere",
+  kind: "reactor",
   x: CENTER.x - MIMIR_RADIUS,
   y: CENTER.y - MIMIR_RADIUS,
   w: MIMIR_RADIUS * 2 + 1,
@@ -364,7 +364,7 @@ function buildGrid(): Uint8Array {
 
   // 가구
   for (const prop of PROPS) {
-    if (prop.kind === "rug" || prop.kind === "sphere") continue;
+    if (prop.kind === "rug" || prop.kind === "reactor") continue;
     for (let y = prop.y; y < prop.y + prop.h; y += 1) {
       for (let x = prop.x; x < prop.x + prop.w; x += 1) block(x, y);
     }
@@ -393,6 +393,78 @@ export const GRID = buildGrid();
 export function walkable(x: number, y: number): boolean {
   if (x < 0 || y < 0 || x >= COLS || y >= ROWS) return false;
   return GRID[y * COLS + x] === 0;
+}
+
+/**
+ * 복도 — 두 개의 링 복도(코어 둘레 · 두 링 사이)와 각 방 문 앞에서 링까지 이어지는 스포크.
+ * 복도 밖 바닥도 걸을 수는 있지만 경로 비용이 높아서 캐릭터는 복도를 따라 돈다.
+ */
+function buildCorridor(): Uint8Array {
+  const c = new Uint8Array(COLS * ROWS);
+  const mark = (x: number, y: number) => {
+    if (walkable(x, y)) c[y * COLS + x] = 1;
+  };
+  const ring = (rx: number, ry: number, width: number) => {
+    for (let y = 1; y < ROWS - 1; y += 1) {
+      for (let x = 1; x < COLS - 1; x += 1) {
+        const r = Math.hypot((x - CENTER.x) / rx, (y - CENTER.y) / ry);
+        if (Math.abs(r - 1) * Math.min(rx, ry) <= width / 2) mark(x, y);
+      }
+    }
+  };
+  ring(16, 12, 2.4); // 코어 둘레
+  ring(35, 28, 2.6); // 프로젝트 링과 부서 링 사이
+  // 스포크: 문 앞에서 중심 방향으로 곧게, 링 복도를 만날 때까지
+  const spoke = (from: Pt, toward: Pt) => {
+    let { x, y } = from;
+    const dx = Math.sign(toward.x - x);
+    const dy = Math.sign(toward.y - y);
+    const horizontal = Math.abs(toward.x - x) * ROWS > Math.abs(toward.y - y) * COLS;
+    for (let i = 0; i < 40; i += 1) {
+      if (!walkable(x, y)) break;
+      mark(x, y);
+      if (i > 0 && c[y * COLS + x] && isRingTile(x, y)) break;
+      if (horizontal) x += dx;
+      else y += dy;
+    }
+  };
+  const isRingTile = (x: number, y: number) => {
+    for (const [rx, ry, w] of [
+      [16, 12, 2.4],
+      [35, 28, 2.6],
+    ]) {
+      const r = Math.hypot((x - CENTER.x) / rx, (y - CENTER.y) / ry);
+      if (Math.abs(r - 1) * Math.min(rx, ry) <= w / 2) return true;
+    }
+    return false;
+  };
+  for (const room of ROOMS) spoke(doorApproach(room), CENTER);
+  // 출입구 → 바깥 링
+  for (let y = ROWS - 2; y >= CENTER.y; y -= 1) {
+    mark(ENTRANCE.x, y);
+    mark(ENTRANCE.x + 1, y);
+    if (isRingTile(ENTRANCE.x, y)) break;
+  }
+  // 미미르 단말 앞 ↔ 코어 링
+  for (let y = MIMIR_SPOT.y; y <= CEO_ROOM.y; y += 1) mark(MIMIR_SPOT.x, y);
+  return c;
+}
+
+export const CORRIDOR = buildCorridor();
+
+/** 이동 비용 — 복도·방 안 1, 그 밖의 빈 바닥 4 */
+const COST: Uint8Array = (() => {
+  const cost = new Uint8Array(COLS * ROWS).fill(4);
+  for (let i = 0; i < cost.length; i += 1) if (CORRIDOR[i]) cost[i] = 1;
+  for (const room of ROOMS) {
+    for (let y = room.y + 1; y < room.y + room.h - 1; y += 1) {
+      for (let x = room.x + 1; x < room.x + room.w - 1; x += 1) cost[y * COLS + x] = 1;
+    }
+  }
+  return cost;
+})();
+export function stepCost(x: number, y: number): number {
+  return COST[y * COLS + x];
 }
 
 export function roomOf(id: string): Room {
