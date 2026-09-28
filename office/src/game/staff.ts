@@ -17,6 +17,8 @@ export type StaffSeed = {
   skin: string;
   /** 자리를 비웠을 때 혼잣말하는 생각 */
   thoughts: string[];
+  /** 프로젝트 PM 이면 그 프로젝트 id (윗줄 프로젝트 방에 앉는다) */
+  project?: string;
 };
 
 const SKIN = ["#ffdcc4", "#f7cdae", "#ffe3cf", "#eec39f"];
@@ -34,6 +36,7 @@ function make(
   colors: [string, string, string],
   thoughts: string[],
   callsign?: string,
+  project?: string,
 ): StaffSeed {
   const i = seq++;
   // 팀장은 `<부서>-lead`, 팀원은 Hermes 프로필 id(callsign)를 그대로 id 로 쓴다
@@ -50,6 +53,7 @@ function make(
     accent: colors[2],
     skin: skin(i),
     thoughts,
+    project,
   };
 }
 
@@ -68,12 +72,17 @@ export const CEO: StaffSeed = {
 };
 
 export const STAFF: StaffSeed[] = STAFF_LIST.map((s) =>
-  make(s.dept, s.rank, s.name, s.role, s.colors, s.thoughts, s.callsign),
+  make(s.dept, s.rank, s.name, s.role, s.colors, s.thoughts, s.callsign, s.project),
 );
 
 /** Hermes 프로필 id(callsign) → 직원 */
 export const STAFF_BY_CALLSIGN: Record<string, StaffSeed> = Object.fromEntries(
   STAFF.filter((s) => s.callsign).map((s) => [s.callsign as string, s]),
+);
+
+/** 프로젝트 id → PM 직원 */
+export const PROJECT_PM: Record<string, StaffSeed> = Object.fromEntries(
+  STAFF.filter((s) => s.project).map((s) => [s.project as string, s]),
 );
 
 /** 부서별 팀장. 직원이 없는 부서(미미르)는 없을 수 있다 */

@@ -6,6 +6,7 @@ import {
   CEO_ROOM,
   ENTRANCE,
   MEETING_ROOM,
+  MIMIR_CENTER,
   PROPS,
   ROOMS,
   TILE,
@@ -13,6 +14,10 @@ import {
   WORLD_W,
   roomOf,
 } from "./world";
+import { PROJECTS } from "../../company.config";
+
+const PROJECT_COLOR: Record<string, string> = Object.fromEntries(PROJECTS.map((p) => [p.id, p.color]));
+const PROJECT_SHORT: Record<string, string> = Object.fromEntries(PROJECTS.map((p) => [p.id, p.name]));
 
 const STATUS_CLASS: Record<DeptStatus, string> = {
   "완료": "done",
@@ -77,9 +82,10 @@ const AgentLayer = memo(function AgentLayer({
           </span>
           <span className="ag-tag">
             {agent.name}
-            {agent.rank === "lead" ? <em>팀장</em> : null}
+            {agent.rank === "lead" ? <em>{agent.project ? "PM" : "팀장"}</em> : null}
             {agent.rank === "ceo" ? <em>대표</em> : null}
             {agent.callsign && agent.rank !== "ceo" ? <small>{agent.callsign}</small> : null}
+            <b className="ag-proj" />
           </span>
         </div>
       ))}
@@ -94,12 +100,15 @@ const PropLayer = memo(function PropLayer() {
         <div
           key={i}
           className={`pr pr-${prop.kind}`}
-          style={{
-            left: prop.x * TILE,
-            top: prop.y * TILE,
-            width: prop.w * TILE,
-            height: prop.h * TILE,
-          }}
+          style={
+            {
+              left: prop.x * TILE,
+              top: prop.y * TILE,
+              width: prop.w * TILE,
+              height: prop.h * TILE,
+              "--room-color": prop.color ?? "var(--pink)",
+            } as React.CSSProperties
+          }
         >
           {prop.kind === "desk" ? <i className="pr-monitor" /> : null}
           {prop.kind === "brain" ? <i className="pr-brain-core" /> : null}
@@ -108,7 +117,7 @@ const PropLayer = memo(function PropLayer() {
       ))}
       <div
         className="entrance-mat"
-        style={{ left: (ENTRANCE.x - 2) * TILE, top: (ENTRANCE.y - 2) * TILE, width: 5 * TILE, height: 2 * TILE }}
+        style={{ left: (ENTRANCE.x - 2) * TILE, top: (ENTRANCE.y - 1) * TILE, width: 5 * TILE, height: 1 * TILE }}
       >
         ENTRANCE
       </div>
@@ -119,6 +128,8 @@ const PropLayer = memo(function PropLayer() {
 export default function OfficeWorld({ engine, snap, selectedId, follow, onSelect }: Props) {
   const viewportRef = useRef<HTMLDivElement>(null);
   const stageRef = useRef<HTMLDivElement>(null);
+  const fxRef = useRef<HTMLCanvasElement>(null);
+  const particlesRef = useRef<{ x: number; y: number; tx: number; ty: number; t: number; color: string }[]>([]);
   const agentRefs = useRef(new Map<string, HTMLDivElement>());
   const camRef = useRef<Cam>({ x: WORLD_W / 2, y: WORLD_H / 2, scale: 0.5 });
   const targetRef = useRef<Cam>({ x: WORLD_W / 2, y: WORLD_H / 2, scale: 0.5 });
@@ -228,6 +239,17 @@ export default function OfficeWorld({ engine, snap, selectedId, follow, onSelect
             bubble.className = `ag-bubble ${agent.speechKind}${text ? " on" : ""}`;
           }
 
+          const chip = el.querySelector(".ag-proj") as HTMLElement | null;
+          if (chip) {
+            const label = agent.project ? PROJECT_SHORT[agent.project] ?? agent.project : "";
+            if (chip.dataset.p !== label) {
+              chip.dataset.p = label;
+              chip.textContent = label;
+              chip.style.display = label ? "inline-block" : "none";
+              chip.style.background = agent.project ? PROJECT_COLOR[agent.project] ?? "" : "";
+            }
+          }
+
           const bar = el.children[1] as HTMLElement;
           const fill = bar.firstElementChild as HTMLElement;
           // 진행률은 시나리오 작업에만 있다. 실시간 기록에는 없으므로(progress 0) 막대를 그리지 않는다.
@@ -236,8 +258,55 @@ export default function OfficeWorld({ engine, snap, selectedId, follow, onSelect
           if (show === "1") fill.style.width = `${Math.round(agent.progress * 100)}%`;
         }
       }
+      paintFx();
       raf = requestAnimationFrame(paint);
     };
+
+    // 미미르 → 일하는 방으로 흐르는 지식 입자 (배경 효과. 기록을 만들지 않는다)
+    const paintFx = () => {
+      const canvas = fxRef.current;
+      if (!canvas) return;
+      const ctx = canvas.getContext("2d");
+      if (!ctx) return;
+      if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+      const list = particlesRef.current;
+      const targets = new Map<string, { x: number; y: number; color: string }>();
+      for (const agent of engine.agents) {
+        if (agent.status !== "업무 중" || agent.rank === "ceo") continue;
+        const room = roomOf(agent.deptId === "pm" && agent.project ? agent.project : agent.deptId);
+        targets.set(room.id, {
+          x: (room.x + room.w / 2) * TILE,
+          y: (room.y + room.h / 2) * TILE,
+          color: agent.project ? PROJECT_COLOR[agent.project] ?? "#7cc7ff" : "#7cc7ff",
+        });
+      }
+      if (targets.size && list.length < 40 && Math.random() < 0.35) {
+        const pick = [...targets.values()][Math.floor(Math.random() * targets.size)];
+        list.push({ x: MIMIR_CENTER.x * TILE, y: MIMIR_CENTER.y * TILE, tx: pick.x, ty: pick.y, t: 0, color: pick.color });
+      }
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      for (let i = list.length - 1; i >= 0; i -= 1) {
+        const pt = list[i];
+        pt.t += 0.012;
+        if (pt.t >= 1) {
+          list.splice(i, 1);
+          continue;
+        }
+        const e = pt.t < 0.5 ? 2 * pt.t * pt.t : 1 - Math.pow(-2 * pt.t + 2, 2) / 2;
+        const x = pt.x + (pt.tx - pt.x) * e;
+        const y = pt.y + (pt.ty - pt.y) * e - Math.sin(pt.t * Math.PI) * 40;
+        ctx.beginPath();
+        ctx.fillStyle = pt.color;
+        ctx.globalAlpha = 0.9 - pt.t * 0.6;
+        ctx.arc(x, y, 3.5, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.globalAlpha = 0.25;
+        ctx.arc(x, y, 8, 0, Math.PI * 2);
+        ctx.fill();
+      }
+      ctx.globalAlpha = 1;
+    };
+
     raf = requestAnimationFrame(paint);
     return () => cancelAnimationFrame(raf);
   }, [engine]);
@@ -284,19 +353,22 @@ export default function OfficeWorld({ engine, snap, selectedId, follow, onSelect
           <div className="world-floor" />
 
           {ROOMS.map((room) => {
-            const status = snap.deptStatus[room.id];
+            const status = room.kind === "project" ? snap.projectStatus[room.id] : snap.deptStatus[room.id];
             return (
               <div
                 key={room.id}
                 className={`rm rm-${room.kind} rm-${room.id} ${status ? STATUS_CLASS[status] : ""} ${
                   hotRoom === room.id ? "hot" : ""
                 }`}
-                style={{
-                  left: room.x * TILE,
-                  top: room.y * TILE,
-                  width: room.w * TILE,
-                  height: room.h * TILE,
-                }}
+                style={
+                  {
+                    left: room.x * TILE,
+                    top: room.y * TILE,
+                    width: room.w * TILE,
+                    height: room.h * TILE,
+                    "--room-color": room.color ?? "var(--pink)",
+                  } as React.CSSProperties
+                }
               >
                 <span className="rm-head">
                   <b>
@@ -317,6 +389,7 @@ export default function OfficeWorld({ engine, snap, selectedId, follow, onSelect
           })}
 
           <PropLayer />
+          <canvas ref={fxRef} className="world-fx" width={WORLD_W} height={WORLD_H} aria-hidden="true" />
           <AgentLayer agents={engine.agents} register={register} onPick={onPick} />
         </div>
 

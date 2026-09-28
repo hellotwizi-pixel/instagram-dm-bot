@@ -10,9 +10,9 @@ import {
   type PublishResult,
 } from "./game/report";
 import { APPROVERS, Company, PHASES, type Agent, type DeptStatus, type Snapshot } from "./game/sim";
-import { CEO, DEPT_BRIEF, DEPT_LEAD, STAFF } from "./game/staff";
+import { CEO, DEPT_BRIEF, DEPT_LEAD, PROJECT_PM, STAFF } from "./game/staff";
 import { DEPT_ROOMS } from "./game/world";
-import { COMPANY, DECISION, FOOTER, LIVE, MIMIR_SOURCES, REQUEST, RESULTS, STORAGE_LINK } from "../company.config";
+import { COMPANY, DECISION, FOOTER, LIVE, MIMIR_SOURCES, PROJECTS, REQUEST, RESULTS, STORAGE_LINK } from "../company.config";
 
 type View = "live" | "dashboard";
 
@@ -498,6 +498,43 @@ function LiveView({
               <span className="window-controls">—　▢　✕</span>
             </div>
             <div className="win-body roster-body">
+              <div className="roster-dept">
+                <p>
+                  <b>🪐 프로젝트 · PM</b>
+                </p>
+                <div className="roster-chips">
+                  {PROJECTS.map((project) => {
+                    const pm = PROJECT_PM[project.id];
+                    const agent = pm ? engine.agentById.get(pm.id) : undefined;
+                    return (
+                      <button
+                        key={project.id}
+                        className={`roster-chip ${pm && selectedId === pm.id ? "on" : ""}`}
+                        onClick={() => agent && onSelect(agent)}
+                        title={pm?.callsign}
+                        style={{ borderColor: project.color }}
+                      >
+                        <i className={`rm-dot ${statusClass[snap.projectStatus[project.id] ?? "대기"]}`} style={{ borderRadius: "50%" }} />
+                        {project.icon} {project.name}
+                        <small>{agent?.status ?? "출근 전"}</small>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+              <div className="roster-dept">
+                <p>
+                  <b>🧠 미미르</b>
+                  <i className={`rm-dot ${statusClass[snap.deptStatus.mimir ?? "대기"]}`} />
+                </p>
+                <div className="roster-chips">
+                  <span className="roster-chip">
+                    <i style={{ background: "#7cc7ff", borderColor: "#2b6cb0" }} />
+                    원천 {MIMIR_SOURCES.length}종
+                    <small>회사 기억 · 조회하러 걸어감</small>
+                  </span>
+                </div>
+              </div>
               {DEPT_ROOMS.map((room) => (
                 <div className="roster-dept" key={room.id}>
                   <p>
@@ -507,14 +544,7 @@ function LiveView({
                     <i className={`rm-dot ${statusClass[snap.deptStatus[room.id] ?? "대기"]}`} />
                   </p>
                   <div className="roster-chips">
-                    {room.id === "mimir" ? (
-                      <span className="roster-chip">
-                        <i style={{ background: "#7cc7ff", borderColor: "#2b6cb0" }} />
-                        원천 {MIMIR_SOURCES.length}종
-                        <small>회사 기억</small>
-                      </span>
-                    ) : null}
-                    {STAFF.filter((s) => s.deptId === room.id).map((seed) => {
+                    {STAFF.filter((s) => s.deptId === room.id || (room.id === "hermes" && s.deptId === "pm" && !s.project)).map((seed) => {
                       const agent = engine.agentById.get(seed.id);
                       return (
                         <button
@@ -819,8 +849,8 @@ function DashboardView({
               맡긴 일, <em className="highlight">지금 어디까지?</em>
             </h1>
             <p>
-              누가 요청했고, 누가 맡았고, 무엇이 나왔는지. {teams.length}개 부서 {STAFF_COUNT}명의 에이전트가 접수 → 분담 → 미미르
-              조회 → 검토 → 결과 회수 → 보고까지 한 흐름으로 움직여요.
+              누가 요청했고, 누가 맡았고, 무엇이 나왔는지. 프로젝트 {PROJECTS.length}개 · 공유 부서 {teams.length}개 · 에이전트{" "}
+              {STAFF_COUNT}명이 요청 → PM 배정 → 미미르 조회 → 검토 → 결과 회수 → 보고까지 한 흐름으로 움직여요.
             </p>
           </div>
           <div className="hero-actions">
@@ -935,6 +965,55 @@ function DashboardView({
         <div className="main-stack">
           <section className="win">
             <div className="win-bar">
+              <span>🪐 project.planets</span>
+              <span className="window-controls">—　▢　✕</span>
+            </div>
+            <div className="win-body">
+              <div className="section-heading">
+                <div>
+                  <p className="eyebrow">PROJECTS · TOP ROW</p>
+                  <h2>{PROJECTS.length}개 프로젝트 · PM이 부서에 배정</h2>
+                </div>
+              </div>
+              <div className="team-grid">
+                {PROJECTS.map((project) => {
+                  const pm = PROJECT_PM[project.id];
+                  const status = snap.projectStatus[project.id] ?? "대기";
+                  return (
+                    <button
+                      className="team-card"
+                      key={project.id}
+                      style={{ borderLeftColor: project.color }}
+                      onClick={() => pm && onSelect(pm.id)}
+                      disabled={!pm}
+                    >
+                      <span className={`status-dot ${statusClass[status]}`} aria-hidden="true" />
+                      <span className="mini-pixel">
+                        {pm ? <PixelEmployee hair={pm.hair} shirt={pm.shirt} accent={pm.accent} /> : <span>{project.icon}</span>}
+                      </span>
+                      <span className="team-copy">
+                        <b>
+                          {project.icon} {project.name}
+                          {pm ? ` · ${pm.name}` : ""}
+                        </b>
+                        <small>
+                          {live.on
+                            ? "실제 요청 기록 기준"
+                            : project.id === REQUEST.project
+                              ? `${REQUEST.channel} · ${REQUEST.text}`
+                              : "들어온 요청 없음"}
+                        </small>
+                      </span>
+                      <span className={`status-pill ${statusClass[status]}`}>{status}</span>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          </section>
+
+          <section className="win">
+            <div className="win-bar">
               <span>🏢 team_office.board</span>
               <span className="window-controls">—　▢　✕</span>
             </div>
@@ -943,7 +1022,7 @@ function DashboardView({
                 <div>
                   <p className="eyebrow">LIVE OFFICE</p>
                   <h2>
-                    {teams.length}개 부서 · 에이전트 {STAFF_COUNT}명 근무 현황
+                    공유 부서 {teams.length}개 · 에이전트 {STAFF_COUNT}명 근무 현황
                   </h2>
                 </div>
                 <div className="filter-tabs" role="group" aria-label="팀 상태 필터">

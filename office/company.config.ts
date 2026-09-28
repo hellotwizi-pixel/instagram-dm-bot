@@ -6,9 +6,9 @@
 //  실시간 연결(LIVE) 시 작업 기록이 올바른 방에 붙습니다.
 //
 //  ⚠️ 딱 2가지 규칙
-//   1. 부서 id(dev, plan, ...)는 바꾸지 마세요. 시나리오 엔진이 이 id로 움직입니다.
-//      → 바꿔도 되는 건 name · icon · short · task · report 입니다.
-//   2. 부서는 12개를 유지하세요. 사무실 배치가 4열 3행 = 12칸 고정입니다.
+//   1. 부서 id(dev, plan, ...)와 프로젝트 id 는 바꾸지 마세요. 시나리오 엔진이 이 id로 움직입니다.
+//      → 바꿔도 되는 건 name · icon · short · color · task · report 입니다.
+//   2. 프로젝트 6개 · 부서 9개 + 헤르메스 를 유지하세요. 사무실 배치가 그 칸 수로 고정입니다.
 //
 //  직원은 자유롭게 늘리고 줄여도 됩니다(방 하나에 최대 12명).
 //  callsign 에는 Hermes 프로필 id(devpm, devcoder …)를 넣으세요.
@@ -26,7 +26,7 @@ export const COMPANY = {
   /** 화면 상단 큰 제목 (강조되는 뒷부분) */
   titleAccent: "지금.",
   /** 라이브 오피스 제목 아래 한 줄 */
-  tagline: "Slack에서 맡긴 일이 헤르메스를 거쳐 부서로 나뉘고, 미미르를 조회하고, 결과로 돌아옵니다.",
+  tagline: "Slack에서 맡긴 일이 프로젝트 방으로 들어가고, PM이 부서에 나누고, 미미르를 조회해 결과로 돌아옵니다.",
   /** 브라우저 탭 제목 */
   pageTitle: "Hermes Office — 우리 회사 AI 오피스",
   /** 검색·공유될 때 뜨는 설명 */
@@ -54,7 +54,22 @@ export const CEO_PROFILE = {
 };
 
 /**
- * 부서 12개 — Hermes Desk LABELS 의 group 과 1:1.
+ * 프로젝트 6개 — 맨 윗줄 방. 각 방에 그 프로젝트 PM 이 앉아 있고 Slack 요청이 여기로 먼저 들어옵니다.
+ * (Hermes Desk village-model.js 의 여섯 행성)
+ * pm = 프로젝트 PM 프로필 id / color = 이름표·방 색 / aliases = 실시간 연결 시 프로젝트 이름 매칭
+ */
+export const PROJECTS = [
+  { id: "golf", name: "ACE 인도어골프", short: "ace.golf", icon: "⛳", color: "#698d75", pm: "acepm", aliases: ["ace인도어골프"] },
+  { id: "bbq", name: "바베큐국립공원", short: "bbq.park", icon: "🔥", color: "#b97c50", pm: "bbqpm", aliases: ["바베큐국립공원"] },
+  { id: "haha", name: "하하팩토리", short: "haha.factory", icon: "🏭", color: "#d29964", pm: "hahapm", aliases: ["하하팩토리"] },
+  { id: "ditalk", name: "디토크", short: "ditalk.studio", icon: "🎙️", color: "#c58b92", pm: "ditalkpm", aliases: ["디토크"] },
+  { id: "dmmate", name: "DMmate", short: "dmmate.post", icon: "💌", color: "#6c99b6", pm: "replypm", aliases: ["dmmate"] },
+  { id: "aiosctl", name: "AI-OS 관리", short: "aios.control", icon: "🛰️", color: "#8c85b5", pm: "aiospm", aliases: ["aios관리", "aios개발관리"] },
+] as const;
+
+/**
+ * 공유 부서 9개 + 헤르메스 — 아랫줄 방. Hermes Desk LABELS 의 group 과 1:1.
+ * 부서 에이전트는 프로젝트마다 복제되지 않는 공유 풀입니다. 일할 때 이름표가 맡은 프로젝트 색으로 칠해집니다.
  * id = 고정(엔진용) / name·short·icon = 자유롭게 변경
  * task = 오늘 하는 일 / report = 팀장 한줄보고
  * liveGroups = 실시간 연결 시 이 방으로 묶을 Hermes group 이름들
@@ -76,15 +91,14 @@ export const DEPARTMENTS = [
     task: "계약서·NDA 조항 검토", report: "불리한 조항과 빠진 조건을 표로 정리해요." },
   { id: "sec", name: "보안팀", short: "sec.team", icon: "🛡️", liveGroups: ["보안팀"],
     task: "코드·설정 보안 점검 · 권한 누락 검토", report: "전문 자동 검사는 도구 연결 뒤에 돌려요." },
-  { id: "aios", name: "AI-OS 관리", short: "aios.ops", icon: "🛰️", liveGroups: ["AI-OS 관리"],
+  { id: "aios", name: "AI-OS 운영", short: "aios.ops", icon: "🛠️", liveGroups: ["AI-OS 관리"],
     task: "에이전트·스킬 점검 · 멈춘 작업 원인 조사", report: "끊어진 연결과 중복 기능을 정리했어요." },
-  { id: "pm", name: "프로젝트", short: "project.pm", icon: "🪐", liveGroups: ["프로젝트"],
-    task: "프로젝트별 요청 접수 · 결과 확인", report: "행성 → 부서 → 요청 → 결과 순서로 챙겨요." },
-  { id: "mimir", name: "미미르", short: "mimir.memory", icon: "🧠", liveGroups: [],
-    task: "회사 기억 · 데이터 원천 누적", report: "저장된 자료와 결정사항을 조회해 드려요." },
-  { id: "hermes", name: "헤르메스", short: "hermes.hq", icon: "⚡", liveGroups: ["헤르메스", "공통", "기타"],
-    task: "Slack 요청 접수 · 업무 분담 · 결과 회수·보고", report: "누가 맡았고 어디까지 됐는지 한 줄로 남겨요." },
+  { id: "hermes", name: "헤르메스", short: "hermes.hq", icon: "⚡", liveGroups: ["헤르메스", "공통", "기타", "프로젝트"],
+    task: "Slack 요청 접수 → 프로젝트 PM 전달 · 결과 회수·보고", report: "누가 맡았고 어디까지 됐는지 한 줄로 남겨요." },
 ] as const;
+
+/** 미미르 — 사무실 한가운데. 직원이 아니라 회사 기억(방)입니다. */
+export const MIMIR = { id: "mimir", name: "미미르", short: "mimir.memory", icon: "🧠" } as const;
 
 /**
  * 직원 명단 — Hermes 프로필 id 를 callsign 으로.
@@ -100,6 +114,8 @@ export type StaffEntry = {
   colors: [string, string, string];
   thoughts: string[];
   callsign?: string;
+  /** 프로젝트 PM 이면 그 프로젝트 id — 윗줄 프로젝트 방에 앉습니다 */
+  project?: string;
 };
 
 export const STAFF_LIST: StaffEntry[] = [
@@ -181,34 +197,35 @@ export const STAFF_LIST: StaffEntry[] = [
   { dept: "sec", rank: "member", name: "취약점검토", callsign: "secsec", role: "취약점·코드 보안 검토",
     colors: ["#6c3a55", "#c9b8ff", "#fff3b0"], thoughts: ["비밀정보 노출 검사.", "권한 누락 체크."] },
 
-  // AI-OS 관리
-  { dept: "aios", rank: "lead", name: "AI-OS PM", callsign: "aiospm", role: "에이전트 운영 업무 조율",
-    colors: ["#372b4a", "#c9b8ff", "#c9b8ff"], thoughts: ["멈춘 작업 원인부터.", "깨진 스킬 연결 정리."] },
-  { dept: "aios", rank: "member", name: "운영배포", callsign: "aiosops", role: "운영·배포·권한 관리",
+  // AI-OS 운영 (PM 은 윗줄 AI-OS 관리 프로젝트 방에)
+  { dept: "aios", rank: "lead", name: "운영배포", callsign: "aiosops", role: "운영·배포·권한 관리",
     colors: ["#3b3b49", "#b8f0dd", "#b8f0dd"], thoughts: ["실행 신호 3분 없으면 확인.", "권한 변경은 대표 승인 뒤."] },
   { dept: "aios", rank: "member", name: "운영분석", callsign: "aiosanalyst", role: "운영 분석",
     colors: ["#2e3a4a", "#ffe6f2", "#b8f0dd"], thoughts: ["보고 누락 원인 조사.", "중복 기능 목록."] },
   { dept: "aios", rank: "member", name: "전략", callsign: "aiosstrat", role: "도입·운영 전략",
     colors: ["#5d3a2c", "#fff3b0", "#c9b8ff"], thoughts: ["새 도구 비교표.", "도입 효과 vs 유지비."] },
 
-  // 프로젝트 담당 (행성별 PM)
-  { dept: "pm", rank: "lead", name: "DMmate", callsign: "replypm", role: "DMmate 담당",
+  // 프로젝트 PM — 윗줄 프로젝트 방 (project 로 지정)
+  { dept: "pm", rank: "lead", name: "DMmate PM", callsign: "replypm", role: "DMmate 담당 · 요청 접수·부서 배정", project: "dmmate",
     colors: ["#313b56", "#c9b8ff", "#b8f0dd"], thoughts: ["댓글 → DM 흐름 확인.", "메시지를 잇는 우체국."] },
-  { dept: "pm", rank: "member", name: "ACE골프", callsign: "acepm", role: "ACE 인도어골프 담당",
+  { dept: "pm", rank: "member", name: "골프 PM", callsign: "acepm", role: "ACE 인도어골프 담당", project: "golf",
     colors: ["#2d4b46", "#b8f0dd", "#fff3b0"], thoughts: ["그린 클럽하우스 예약 현황.", "현장 사진 판독 결과 확인."] },
-  { dept: "pm", rank: "member", name: "바베큐", callsign: "bbqpm", role: "바베큐국립공원 담당",
+  { dept: "pm", rank: "member", name: "바베큐 PM", callsign: "bbqpm", role: "바베큐국립공원 담당", project: "bbq",
     colors: ["#8b534a", "#fff3b0", "#ff8fc0"], thoughts: ["숲속 캠프 시즌 준비.", "인스타 실적 확인."] },
-  { dept: "pm", rank: "member", name: "하하팩토리", callsign: "hahapm", role: "하하팩토리 담당",
+  { dept: "pm", rank: "member", name: "하하 PM", callsign: "hahapm", role: "하하팩토리 담당", project: "haha",
     colors: ["#c26e4b", "#ff8fc0", "#fff3b0"], thoughts: ["아이디어 작업장 정리.", "제작 일정 확인."] },
-  { dept: "pm", rank: "member", name: "디토크", callsign: "ditalkpm", role: "디토크 담당",
+  { dept: "pm", rank: "member", name: "디토크 PM", callsign: "ditalkpm", role: "디토크 담당", project: "ditalk",
     colors: ["#9c5c72", "#ffe6f2", "#c9b8ff"], thoughts: ["이야기가 모이는 스튜디오.", "회의 요약 확인."] },
-  { dept: "pm", rank: "member", name: "AI Council", callsign: "councilpm", role: "AI Council 담당",
+  { dept: "pm", rank: "member", name: "AI-OS PM", callsign: "aiospm", role: "AI-OS 관리 담당 · 에이전트 운영 조율", project: "aiosctl",
+    colors: ["#372b4a", "#c9b8ff", "#c9b8ff"], thoughts: ["멈춘 작업 원인부터.", "깨진 스킬 연결 정리."] },
+  // 행성이 없는 프로젝트 담당 — 헤르메스 방에 앉습니다
+  { dept: "hermes", rank: "member", name: "AI Council", callsign: "councilpm", role: "AI Council 담당",
     colors: ["#372b4a", "#c9b8ff", "#b8f0dd"], thoughts: ["회의 기록 → 할 일.", "화자별 발언 정리."] },
-  { dept: "pm", rank: "member", name: "리워드", callsign: "rewardpm", role: "리워드드로우 담당",
+  { dept: "hermes", rank: "member", name: "리워드", callsign: "rewardpm", role: "리워드드로우 담당",
     colors: ["#6b4a2f", "#b8f0dd", "#ff8fc0"], thoughts: ["추첨 규칙 확인.", "참여 데이터 정리."] },
-  { dept: "pm", rank: "member", name: "보드", callsign: "boardpm", role: "Planning Board 담당",
+  { dept: "hermes", rank: "member", name: "보드", callsign: "boardpm", role: "Planning Board 담당",
     colors: ["#33304a", "#fff3b0", "#c9b8ff"], thoughts: ["보드 카드 정리.", "결정사항 미미르에."] },
-  { dept: "pm", rank: "member", name: "바로열기", callsign: "openitpm", role: "바로열기 담당",
+  { dept: "hermes", rank: "member", name: "바로열기", callsign: "openitpm", role: "바로열기 담당",
     colors: ["#463227", "#ffe6f2", "#b8f0dd"], thoughts: ["변환 프로세스 점검.", "ngrok 상태 확인."] },
 
   // 헤르메스 (접수·분담·보고) + 공통·검토 프로필
@@ -241,9 +258,8 @@ export const BLOCK_REASONS: Record<string, string> = {
  * 라이브 오피스 시나리오(접수 → 분담 → 미미르 조회 → 검토 차단 → 대표 확인 → 완료)에 그대로 쓰입니다.
  */
 export const REQUEST = {
-  /** 요청이 들어온 프로젝트 (프로젝트 담당 PM 의 callsign) */
-  project: "DMmate",
-  projectPm: "replypm",
+  /** 요청이 들어온 프로젝트 id (PROJECTS 의 id) */
+  project: "dmmate",
   channel: "#dmmate",
   requester: "대표",
   /** 요청 한 줄 */

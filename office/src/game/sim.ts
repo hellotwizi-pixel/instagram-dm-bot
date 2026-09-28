@@ -2,7 +2,7 @@
 // 직원 상태머신 + A* 이동 + 회의 엔진 + Hermes 요청 처리 시나리오 + 실시간(Hermes Desk) 반영
 
 import { findPath } from "./pathfinding";
-import { BLOCK_NEED, CEO, DEPT_BRIEF, DEPT_BY_LIVE_GROUP, DEPT_LEAD, STAFF, STAFF_BY_CALLSIGN, type StaffSeed } from "./staff";
+import { BLOCK_NEED, CEO, DEPT_BRIEF, DEPT_BY_LIVE_GROUP, DEPT_LEAD, PROJECT_PM, STAFF, STAFF_BY_CALLSIGN, type StaffSeed } from "./staff";
 import {
   CEO_REPORT_SPOT,
   CEO_SEAT,
@@ -11,13 +11,16 @@ import {
   ENTRANCE,
   LOUNGE_ROOM,
   MEETING_SEATS,
+  MEETING_TABLE_Y,
   MIMIR_SPOT,
+  PROJECT_ROOMS,
   doorApproach,
+  projectSpot,
   roomOf,
   walkable,
   type Pt,
 } from "./world";
-import { BLOCK_REASONS, DECISION, MIMIR_SOURCES, REQUEST } from "../../company.config";
+import { BLOCK_REASONS, DECISION, MIMIR_SOURCES, PROJECTS, REQUEST } from "../../company.config";
 
 /** Hermes Desk 범례와 같은 다섯 상태: ● 작업 중 ◆ 확인 필요 ■ 차단 ○ 대기 + 완료 */
 export type DeptStatus = "완료" | "작업 중" | "확인 필요" | "차단" | "대기";
@@ -91,6 +94,8 @@ export type Agent = {
   jitter: number;
   /** 실시간 모드에서 마지막으로 반영한 상태 키 (같으면 다시 지시하지 않음) */
   liveKey: string;
+  /** 지금 맡은 프로젝트 id — 이름표가 이 프로젝트 색으로 칠해진다 (PM 은 고정) */
+  project: string | null;
 };
 
 export type LogEntry = { id: number; time: string; icon: string; text: string; tone: string };
@@ -163,6 +168,8 @@ export type Snapshot = {
   approved: boolean;
   briefingReady: boolean;
   deptStatus: Record<string, DeptStatus>;
+  /** 프로젝트 방 상태 (윗줄) */
+  projectStatus: Record<string, DeptStatus>;
   counts: Record<AgentStatus, number>;
   stats: { done: number; working: number; approval: number; blocked: number };
   log: LogEntry[];
@@ -178,14 +185,14 @@ export type Snapshot = {
 const PHASES = [
   "출근 대기",
   "07:00 전사 출근",
-  "Slack 요청 접수",
-  "헤르메스 업무 분담",
+  "Slack 요청 → 프로젝트",
+  "PM 업무 분담",
   "기획 · 미미르 조회",
   "디자인 · 개발 병행",
   "검토 차단 · 대표 확인",
   "QA 실기기 검증",
   "마케팅 · 운영 · AI-OS",
-  "결과 회수",
+  "PM 결과 회수",
   "헤르메스 보고",
   "업무 종료",
 ];
@@ -203,7 +210,8 @@ export const APPROVERS = ["dev-lead", "devreview", "hermes-lead"];
 
 /** 지시창에서 부서를 찾을 때 쓰는 키워드 — 구체적인 것부터 검사한다 */
 const DEPT_KEYWORDS: [string, string[]][] = [
-  ["aios", ["ai-os", "aios", "에이전트 관리", "스킬", "게이트웨이"]],
+  ...PROJECTS.map((p) => [p.id, [p.name.toLowerCase(), ...p.aliases]] as [string, string[]]),
+  ["aios", ["ai-os 운영", "aios 운영", "에이전트 관리", "스킬", "게이트웨이"]],
   ["mimir", ["미미르", "기억", "자료실", "원천", "데이터 연결"]],
   ["hermes", ["헤르메스", "비서", "분담", "접수"]],
   ["dev", ["개발", "코드", "버그", "구현", "리뷰", "qa", "검수"]],
@@ -214,8 +222,14 @@ const DEPT_KEYWORDS: [string, string[]][] = [
   ["ops", ["운영팀", "문서", "안내서", "faq", "조사", "리서치"]],
   ["legal", ["법무", "계약", "nda", "조항"]],
   ["sec", ["보안", "취약점", "침해", "권한 검토"]],
-  ["pm", ["프로젝트", "행성", "dmmate", "골프", "바베큐", "하하", "디토크", "council", "리워드", "바로열기"]],
+  ["golf", ["골프"]],
+  ["bbq", ["바베큐"]],
+  ["haha", ["하하"]],
+  ["ditalk", ["디토크"]],
+  ["dmmate", ["dm", "디엠"]],
+  ["aiosctl", ["ai-os 관리", "aios 관리"]],
 ];
+const PROJECT_IDS = new Set<string>(PROJECTS.map((p) => p.id));
 
 /** Hermes 작업 상태 → 화면 표현 (office.js 와 같은 기준) */
 const LIVE_ACTIVE = new Set(["running", "in_progress", "claimed"]);
@@ -246,6 +260,7 @@ export class Company {
   agents: Agent[] = [];
   agentById = new Map<string, Agent>();
   deptStatus: Record<string, DeptStatus> = {};
+  projectStatus: Record<string, DeptStatus> = {};
   log: LogEntry[] = [];
   clockMinutes = 7 * 60;
   /** 재생 속도 — 시뮬레이션 전체(걷기·업무·대사)를 함께 배속한다. 실제 외부 작업 속도와는 무관 */
@@ -314,11 +329,13 @@ export class Company {
     this.liveTaskById.clear();
 
     const seats = new Map<string, Pt[]>();
-    for (const room of DEPT_ROOMS) seats.set(room.id, room.desks.map((d) => d.seat));
+    for (const room of [...DEPT_ROOMS, ...PROJECT_ROOMS]) seats.set(room.id, room.desks.map((d) => d.seat));
 
     for (const seed of STAFF) {
-      const pool = seats.get(seed.deptId);
-      const home = pool?.shift() ?? rand(roomOf(seed.deptId).loiter);
+      // PM 은 프로젝트 방, 나머지는 부서 방. 방이 없는 부서(pm 인데 행성 없음)는 헤르메스 방으로
+      const roomId = seed.project ?? (seats.has(seed.deptId) ? seed.deptId : "hermes");
+      const pool = seats.get(roomId);
+      const home = pool?.shift() ?? rand(roomOf(roomId).loiter);
       this.spawn(seed, home, { x: ENTRANCE.x, y: ENTRANCE.y });
     }
     this.spawn(CEO, CEO_SEAT, CEO_SEAT);
@@ -331,6 +348,8 @@ export class Company {
     for (const room of DEPT_ROOMS) {
       this.deptStatus[room.id] = BLOCKED_DEPTS.has(room.id) ? "차단" : "대기";
     }
+    this.deptStatus.mimir = "대기";
+    for (const project of PROJECTS) this.projectStatus[project.id] = "대기";
     this.pushLog("👑", "대표실 준비 완료. 출근 버튼을 기다리는 중이에요.", "lav");
     this.pushChat("staff", HERMES, `대표님, ${HERMES}입니다. 누가 맡았고 어디까지 됐는지 여기서 바로 물어보세요.`);
   }
@@ -358,6 +377,7 @@ export class Company {
       idleFor: Math.random() * 8,
       jitter: (Math.random() - 0.5) * 0.28,
       liveKey: "",
+      project: seed.project ?? null,
     };
     this.agents.push(agent);
     this.agentById.set(agent.id, agent);
@@ -435,8 +455,12 @@ export class Company {
   }
 
   private leadOf(deptId: string): Agent | null {
-    const lead = DEPT_LEAD[deptId];
+    const lead = DEPT_LEAD[deptId] ?? PROJECT_PM[deptId];
     return lead ? this.agentById.get(lead.id) ?? null : null;
+  }
+
+  private statusOf(roomId: string): DeptStatus {
+    return PROJECT_IDS.has(roomId) ? this.projectStatus[roomId] : this.deptStatus[roomId];
   }
 
   // ── 하루 시나리오 ─────────────────────────────────────────
@@ -472,31 +496,45 @@ export class Company {
 
     const hermes = this.agent("hermes-lead");
     const ceo = this.agent("ceo");
-    const pm = this.agentById.get(STAFF_BY_CALLSIGN[REQUEST.projectPm]?.id ?? "pm-lead") ?? this.agent("pm-lead");
+    const project = PROJECTS.find((p) => p.id === REQUEST.project) ?? PROJECTS[0];
+    const pm = this.leadOf(project.id) ?? this.agent("hermes-lead");
 
-    // ② Slack 요청 접수
+    // ② Slack 요청 접수 → 헤르메스가 프로젝트 방으로 가져간다
     this.phaseIndex = 2;
+    this.lock([hermes, pm]);
     this.stand(hermes);
-    this.say(hermes, `${REQUEST.channel}에 새 요청이 왔어요.`, 3);
+    this.say(hermes, `${REQUEST.channel}에 새 요청! ${project.name}로 갑니다.`, 3);
     this.pushLog("#", `Slack ${REQUEST.channel} · ${REQUEST.requester}: “${REQUEST.text}”`, "yellow");
-    this.pushChat("staff", HERMES, `${REQUEST.channel}에서 ${REQUEST.requester}님 요청 접수했어요.\n“${REQUEST.text}”\n프로젝트 ${REQUEST.project} · 담당 PM ${pm.name}와 분담 회의를 열게요.`);
-    this.spotlightRoom("hermes", 6);
-    yield 2.2;
+    this.pushChat("staff", HERMES, `${REQUEST.channel}에서 ${REQUEST.requester}님 요청 접수했어요.\n“${REQUEST.text}”\n${project.name} 방의 ${pm.name}에게 전달합니다. 분담은 PM 이 해요.`);
+    this.spotlightRoom(project.id, 10);
+    this.goto(hermes, projectSpot(project.id), "이동 중");
+    yield this.allFree([hermes]);
+    hermes.anim = "talk";
+    this.say(hermes, "요청 보드에 올렸어요. 분담 부탁해요.", 3);
+    this.projectStatus[project.id] = "작업 중";
+    yield 1.6;
+    this.stand(pm);
+    this.say(pm, "미미르 조회부터 시키고 기획·디자인·개발로 나눌게요.", 3.2);
+    this.pushLog(project.icon, `${project.name} 요청 보드 등록 — PM ${pm.name} 분담 시작`, "pink");
+    yield 2;
+    hermes.anim = "idle";
     this.sitAtDesk(hermes);
+    yield this.allFree([hermes]);
+    this.unlock([hermes, pm]);
 
-    // ③ 헤르메스 업무 분담 회의 — 헤르메스 · 프로젝트 PM · 기획PM · 개발PM
+    // ③ PM 업무 분담 회의 — 프로젝트 PM 이 기획·디자인·개발 팀장을 부른다
     this.phaseIndex = 3;
     yield* this.meeting(
-      `업무 분담 · ${REQUEST.project}`,
-      ["hermes-lead", pm.id, "plan-lead", "dev-lead"],
+      `${project.name} 업무 분담`,
+      [pm.id, "plan-lead", "design-lead", "dev-lead"],
       [
-        ["hermes-lead", `요청 한 줄: “${REQUEST.text}”. 기획 → 디자인·개발 → QA 순서로 나눌게요.`],
-        [pm.id, `${REQUEST.project} 쪽 기존 결정은 미미르에 있어요. 기획팀이 먼저 조회해 주세요.`],
-        ["plan-lead", "작업 단위로 쪼개서 반나절 이하로 만들게요."],
+        [pm.id, `요청 한 줄: “${REQUEST.text}”. 기획 → 디자인·개발 → QA 순서로 갑니다.`],
+        ["plan-lead", "미미르에서 이전 결정부터 보고, 작업 단위로 쪼갤게요."],
+        ["design-lead", "기획 흐름 오면 바로 시안 그리겠습니다."],
         ["dev-lead", "권한이 걸리는 부분은 검토에서 멈추고 대표님께 올릴게요."],
       ],
     );
-    this.pushLog("⚡", `헤르메스 분담 완료 — 기획·디자인·개발·QA·마케팅·운영·AI-OS 7건 등록`, "mint");
+    this.pushLog("⚡", `${pm.name} 분담 완료 — 기획·디자인·개발·QA·마케팅·운영·AI-OS 7건 등록`, "mint");
 
     // ④ 기획 — 스펙 담당이 미미르를 먼저 조회한다
     this.phaseIndex = 4;
@@ -529,7 +567,7 @@ export class Company {
       this.stand(agent);
       const seat = this.bookSeat(agent, i);
       this.goto(agent, seat, "회의 중");
-      this.enqueue(agent, { k: "face", dir: seat.y < 7 ? "down" : "up" }, { k: "anim", a: "sit" });
+      this.enqueue(agent, { k: "face", dir: seat.y < MEETING_TABLE_Y ? "down" : "up" }, { k: "anim", a: "sit" });
     });
     const ceoSeat = this.bookSeat(ceo, 3);
     this.enqueue(
@@ -537,7 +575,7 @@ export class Company {
       { k: "anim", a: "idle" },
       { k: "status", s: "회의 중" },
       { k: "walk", to: ceoSeat },
-      { k: "face", dir: ceoSeat.y < 7 ? "down" : "up" },
+      { k: "face", dir: ceoSeat.y < MEETING_TABLE_Y ? "down" : "up" },
       { k: "anim", a: "sit" },
     );
     yield this.allFree([...approvers, ceo]);
@@ -591,11 +629,12 @@ export class Company {
     yield () => this.deptStatus.mkt === "완료" && this.deptStatus.aios === "완료" && this.deptStatus.ops === "완료";
     this.pushLog("🗂️", "안내 문구 초안 · 사용 안내서 · 실행 기록 점검 완료 (게시·발송은 대표 승인 뒤)", "mint");
 
-    // ⑨ 결과 회수 — 헤르메스가 개발팀에 가서 결과를 받아 온다
+    // ⑨ PM 결과 회수 — 개발PM 이 프로젝트 방에 결과를 올리고, 헤르메스가 PM 에게서 받아 간다
     this.phaseIndex = 9;
-    yield* this.deliver("hermes-lead", "dev", "결과 회수하러 왔어요. 결과 파일 등록됐죠?", "네, 결과물 2건 등록했어요.");
-    this.pushLog("📦", "결과 회수 완료 — 결과물 2건 등록 (완료 ≠ 보고 전달, 발행은 별도)", "mint");
-    this.deptStatus.pm = "완료";
+    yield* this.deliver("dev-lead", project.id, "결과물 2건 등록했어요. 요청 보드에 올릴게요.", "확인했어요. 헤르메스에게 넘길게요.");
+    yield* this.deliver("hermes-lead", project.id, "결과 회수하러 왔어요.", "결과물 2건, 중간·최종 구분해 뒀어요.");
+    this.projectStatus[project.id] = "완료";
+    this.pushLog("📦", `${project.name} 결과 회수 완료 — 결과물 2건 등록 (완료 ≠ 보고 전달, 발행은 별도)`, "mint");
 
     // ⑩ 헤르메스 보고
     this.phaseIndex = REPORT_PHASE;
@@ -632,7 +671,7 @@ export class Company {
   }
 
   /** 부서 업무 시작(비동기) */
-  private startDept(deptId: string, label: string, dur: number) {
+  private startDept(deptId: string, label: string, dur: number, projectId: string | null = REQUEST.project) {
     this.deptStatus[deptId] = "작업 중";
     const crew = this.deptAgents(deptId);
     this.lock(crew);
@@ -640,6 +679,7 @@ export class Company {
     crew.forEach((agent, i) => {
       this.enqueue(
         agent,
+        { k: "fn", fn: () => { agent.project = projectId; } },
         { k: "wait", dur: i * 0.35 },
         { k: "walk", to: agent.home },
         { k: "face", dir: "up" },
@@ -657,6 +697,7 @@ export class Company {
     if (this.deptStatus[deptId] === "완료") return;
     this.deptStatus[deptId] = "완료";
     this.unlock(this.deptAgents(deptId));
+    for (const a of this.deptAgents(deptId)) if (!a.project || !PROJECT_PM[a.project] || PROJECT_PM[a.project].id !== a.id) a.project = null;
     const agent = this.leadOf(deptId);
     if (agent) this.say(agent, "완료했어요!", 2.4);
     this.pushLog(roomOf(deptId).icon, `${roomOf(deptId).name} 완료 — ${DEPT_BRIEF[deptId].report}`, "mint");
@@ -707,7 +748,7 @@ export class Company {
       this.goto(agent, seat, "회의 중");
       this.enqueue(
         agent,
-        { k: "face", dir: seat.y < 7 ? "down" : "up" },
+        { k: "face", dir: seat.y < MEETING_TABLE_Y ? "down" : "up" },
         { k: "anim", a: "sit" },
         { k: "status", s: "회의 중" },
       );
@@ -767,7 +808,7 @@ export class Company {
 
   /** 테이블을 사이에 두고 마주보도록 위·아래 줄을 번갈아 배정한다 */
   private bookSeat(agent: Agent, preferred: number): Pt {
-    const zigzag = [0, 4, 1, 5, 2, 6, 3, 7];
+    const zigzag = [0, 3, 1, 4, 2, 5];
     const taken = new Set([...this.seatBook.values()].map((p) => `${p.x},${p.y}`));
     const order = [zigzag[preferred % zigzag.length], ...zigzag];
     for (const i of order) {
@@ -928,9 +969,28 @@ export class Company {
   private deptReport(deptId: string, question: string) {
     const room = roomOf(deptId);
     const lead = this.leadOf(deptId);
-    const status = this.deptStatus[deptId];
-    const crew = this.deptAgents(deptId);
+    const status = this.statusOf(deptId);
+    const crew = PROJECT_IDS.has(deptId) ? this.agents.filter((a) => a.project === deptId) : this.deptAgents(deptId);
     const lines: string[] = [];
+
+    if (PROJECT_IDS.has(deptId)) {
+      const working = crew.filter((a) => a.rank !== "ceo" && PROJECT_PM[deptId]?.id !== a.id);
+      lines.push(
+        status === "작업 중"
+          ? `${room.name} 요청 진행 중이에요. 지금 붙어 있는 부서 인원 ${working.length}명: ${working.map((a) => `${a.name}(${roomOf(a.deptId).name})`).join(" · ") || "배정 대기"}.`
+          : status === "완료"
+            ? `${room.name} 요청은 결과까지 회수했어요. 보고 전달은 발행에서 따로 확인해요.`
+            : `${room.name}는 지금 들어온 요청이 없어요. Slack 에서 요청이 오면 PM 이 부서에 배정합니다.`,
+      );
+      this.pushChat("staff", lead ? `${lead.name} · ${room.name}` : room.name, lines.join("\n"));
+      if (lead) {
+        this.say(lead, "대표님, 보고드릴게요!", 3);
+        lead.anim = "talk";
+      }
+      this.spotlightRoom(deptId, 8);
+      this.pushLog("🎤", `대표 지시: ${room.name} 프로젝트 확인`, "yellow");
+      return;
+    }
 
     if (deptId === "mimir") {
       lines.push(`미미르는 직원이 아니라 회사 기억이에요. 원천 ${MIMIR_SOURCES.length}종: ${MIMIR_SOURCES.slice(0, 6).join(" · ")} 외.`);
@@ -1032,8 +1092,7 @@ export class Company {
       this.pushChat("staff", HERMES, "앞선 지시를 아직 처리 중이에요. 끝나면 바로 잡겠습니다.");
       return;
     }
-    const ids = Object.keys(this.deptStatus)
-      .map((dept) => DEPT_LEAD[dept]?.id)
+    const ids = DEPT_ROOMS.map((room) => DEPT_LEAD[room.id]?.id)
       .filter((id): id is string => Boolean(id))
       .filter((id) => !this.locked.has(id) && this.agentById.get(id)?.status !== "출근 전")
       .slice(0, 6);
@@ -1218,6 +1277,17 @@ export class Company {
     this.live.tasks = ops.tasks.filter((t) => !LIVE_TERMINAL.has(t.status)).length;
     this.liveTaskById = new Map(ops.tasks.map((t) => [t.id, t]));
 
+    // 프로젝트 방 — 요청(requests)의 접수 프로필(PM)로 묶는다. 근거 없는 프로젝트 연결은 하지 않는다
+    for (const project of PROJECTS) this.projectStatus[project.id] = "대기";
+    for (const request of ops.requests ?? []) {
+      const project = PROJECTS.find((p) => p.pm === request.profile);
+      if (!project) continue;
+      const next: DeptStatus =
+        request.state === "blocked" ? "차단" : request.state === "unknown" ? "확인 필요" : request.state === "complete" ? "완료" : request.state === "waiting" ? "대기" : "작업 중";
+      const rank: DeptStatus[] = ["차단", "확인 필요", "작업 중", "대기", "완료"];
+      if (rank.indexOf(next) < rank.indexOf(this.projectStatus[project.id])) this.projectStatus[project.id] = next;
+    }
+
     // 부서 상태 — office.js 와 같은 우선순위: 차단 > 확인 필요 > 작업 중 > 대기 > 완료
     const byDept = new Map<string, LiveTask[]>();
     for (const task of ops.tasks) {
@@ -1228,6 +1298,7 @@ export class Company {
     }
     for (const room of DEPT_ROOMS) {
       const tasks = (byDept.get(room.id) ?? []).filter((t) => t.status !== "archived");
+      if (room.id === "hermes") continue; // 헤르메스 방은 접수·전달 역할, 작업 상태로 칠하지 않는다
       const open = tasks.filter((t) => !LIVE_TERMINAL.has(t.status));
       let status: DeptStatus = "대기";
       if (open.some((t) => ["blocked", "crashed", "timed_out", "gave_up"].includes(t.status))) status = "차단";
@@ -1535,7 +1606,7 @@ export class Company {
     for (const agent of this.agents) {
       counts[agent.status] = (counts[agent.status] ?? 0) + 1;
     }
-    const values = Object.values(this.deptStatus);
+    const values = DEPT_ROOMS.map((room) => this.deptStatus[room.id]);
     return {
       clock: this.clockText(),
       running: this.running,
@@ -1555,6 +1626,7 @@ export class Company {
       approved: this.approved,
       briefingReady: this.briefingReady,
       deptStatus: { ...this.deptStatus },
+      projectStatus: { ...this.projectStatus },
       counts,
       stats: {
         done: values.filter((v) => v === "완료").length,

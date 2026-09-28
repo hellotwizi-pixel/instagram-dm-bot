@@ -247,7 +247,27 @@
 }
 @keyframes brainPulse { 50% { box-shadow: 0 0 0 6px rgba(80, 214, 255, .15), 0 0 26px rgba(80, 214, 255, .8); } }
 @keyframes spinSlow { to { transform: rotate(360deg); } }
-.rm-mimir { background: #eef6ff; }
+.rm-mimir { background: #eef6ff; box-shadow: inset 0 0 0 2px rgba(255, 255, 255, .8), 0 0 0 4px rgba(124, 199, 255, .25), 4px 5px 0 rgba(74, 43, 60, .22); }
+.rm-project { border-top: 6px solid var(--room-color); background: #fffdfe; }
+.rm-project .rm-head { background: var(--room-color); color: #fff; }
+.rm-project.working { background: #fffaf0; }
+.rm-project.done { background: #f2fdf8; }
+.pr-board {
+  display: grid;
+  place-items: center;
+  border: 2px solid var(--ink);
+  border-radius: 4px;
+  background: #fff;
+  box-shadow: inset 0 0 0 3px var(--room-color);
+  font-family: "Archivo", sans-serif;
+  font-size: 8px;
+  font-weight: 900;
+  letter-spacing: .06em;
+  color: var(--ink);
+}
+.world-fx { position: absolute; left: 0; top: 0; pointer-events: none; z-index: 150; }
+.ag-proj { display: none; padding: 0 3px; border-radius: 99px; color: #fff; font-size: 7px; font-weight: 900; }
+.compact .ag-proj { display: none !important; }
 .ag.blocked .p-torso { box-shadow: inset 0 -3px 0 rgba(74, 43, 60, .12), 0 0 0 1.5px #ff6375; }
 .ag.attention .p-hair::after {
   content: "!";
