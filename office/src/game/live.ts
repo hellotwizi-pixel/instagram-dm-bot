@@ -5,12 +5,13 @@
 // 순서: GET /api/connect (X-Desk-Bootstrap: 1) → token → GET /api/operations?after=cursor (X-Desk-Token)
 //
 // 원칙(보고체계 기준.md): 기록에 없는 진행률·성공을 만들지 않는다. 연결이 끊기면 마지막 상태를 회색으로 남긴다.
-import type { Company, LiveOps } from "./sim";
+import type { Company, LiveOps, LiveSlack } from "./sim";
 
 export class LiveBridge {
   private token: string | null = null;
   private cursor: number | null = null;
   private timer = 0;
+  private slackTimer = 0;
   private stopped = false;
   private busy = false;
 
@@ -28,6 +29,21 @@ export class LiveBridge {
   stop() {
     this.stopped = true;
     window.clearTimeout(this.timer);
+    window.clearTimeout(this.slackTimer);
+  }
+
+  /** Slack 요청·보고 전달은 Hermes Desk 와 같은 10초 간격 */
+  private async pollSlack() {
+    if (this.stopped || !this.token) return;
+    try {
+      const response = await fetch(`${this.base}/api/slack`, { headers: { "X-Desk-Token": this.token }, cache: "no-store" });
+      if (response.ok) this.engine.applySlack((await response.json()) as LiveSlack);
+    } catch {
+      // Slack 기록 실패는 작업 기록과 별개 — 조용히 다음 회차에 다시 시도
+    } finally {
+      window.clearTimeout(this.slackTimer);
+      this.slackTimer = window.setTimeout(() => void this.pollSlack(), 10000);
+    }
   }
 
   private schedule(ms: number) {
@@ -48,6 +64,7 @@ export class LiveBridge {
       this.token = data.token;
       this.engine.enterLive();
       await this.poll();
+      void this.pollSlack();
     } catch (error) {
       this.engine.enterLive();
       this.engine.setLiveError(error instanceof Error ? error.message : String(error));

@@ -701,6 +701,14 @@ function ProfileModal({
             <span className="tiny-label">한마디</span>
             <strong>{agent.speech ?? agent.thoughts[0]}</strong>
           </div>
+          {agent.note ? (
+            <div className="report-box">
+              <span className="tiny-label">
+                마지막 기록 · {agent.note.kind} · {agent.note.time}
+              </span>
+              <strong style={{ whiteSpace: "pre-wrap" }}>{agent.note.text}</strong>
+            </div>
+          ) : null}
           <div className="profile-actions">
             <button className="btn btn-primary" onClick={() => onAsk(agent)}>
               🎤 지금 뭐 하는지 물어보기

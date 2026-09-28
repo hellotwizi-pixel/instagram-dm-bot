@@ -98,6 +98,8 @@ export type Agent = {
   liveKey: string;
   /** 지금 맡은 프로젝트 id — 이름표가 이 프로젝트 색으로 칠해진다 (PM 은 고정) */
   project: string | null;
+  /** 실시간 모드에서 이 직원이 남긴 마지막 기록 원문 (완료 요약·진행 메모·차단 사유·요청) */
+  note: { kind: string; text: string; time: string } | null;
 };
 
 export type LogEntry = { id: number; time: string; icon: string; text: string; tone: string };
@@ -148,6 +150,24 @@ export type LiveOps = {
   requests?: { id: string; state: string; profile?: string; done: number; total: number }[];
   history?: boolean;
 };
+/** Hermes Desk /api/slack 응답 중 화면에 쓰는 부분 — Slack 에 기록된 요청과 보고 전달 */
+export type LiveSlack = {
+  checked?: number;
+  conversations: {
+    id: string;
+    channel?: string;
+    profile?: string | null;
+    title?: string;
+    requestText?: string;
+    user?: string | null;
+    taskIds?: string[];
+    state?: string;
+    done?: number;
+    reportedDone?: number;
+    lastAt?: number;
+  }[];
+};
+
 export type LiveInfo = {
   on: boolean;
   connected: boolean;
@@ -250,6 +270,12 @@ const LIVE_EVENT_NAMES: Record<string, string> = {
   unblocked: "차단 해제",
   attached: "결과물 추가",
 };
+
+/** 기록 원문을 말풍선용 한 줄로 — 첫 문장, 최대 48자. 내용을 지어내지 않는다 */
+function firstLine(text: string, max = 48): string {
+  const line = text.replace(/\s+/g, " ").trim().split(/(?<=[.!?。])\s|\n/)[0] ?? "";
+  return line.length > max ? `${line.slice(0, max - 1)}…` : line;
+}
 
 function rand<T>(arr: T[]): T {
   return arr[Math.floor(Math.random() * arr.length)];
@@ -381,6 +407,7 @@ export class Company {
       jitter: (Math.random() - 0.5) * 0.28,
       liveKey: "",
       project: seed.project ?? null,
+      note: null,
     };
     this.agents.push(agent);
     this.agentById.set(agent.id, agent);
@@ -1360,11 +1387,61 @@ export class Company {
       const who = event.assignee ?? task?.assignee ?? "담당 미정";
       const tone = ["blocked", "crashed", "timed_out"].includes(event.kind) ? "lav" : event.kind === "completed" ? "mint" : "pink";
       this.pushLog(deptId ? roomOf(deptId).icon : "⚡", `${name} · ${who} — ${event.title ?? task?.title ?? event.task_id}${event.detail ? `: ${event.detail.slice(0, 80)}` : ""}`, tone);
-      if (history || !deptId || ops.checked - event.created_at > 15) continue;
+      if (history) continue;
+      // 기록에 글이 남은 이벤트는 담당 머리 위에 원문 첫 줄로 띄운다 (진행 메모·완료 요약·차단 사유·검수 요청)
+      const speaker = STAFF_BY_CALLSIGN[event.assignee ?? task?.assignee ?? ""];
+      const speakerAgent = speaker ? this.agentById.get(speaker.id) : undefined;
+      if (speakerAgent && event.detail) {
+        speakerAgent.note = { kind: name, text: event.detail, time: this.clockText() };
+        const think = ["blocked", "crashed", "timed_out"].includes(event.kind);
+        this.say(speakerAgent, `${name}: ${firstLine(event.detail)}`, 6, think ? "think" : "talk");
+        if (!think) speakerAgent.anim = speakerAgent.anim === "type" ? "type" : "talk";
+      }
+      if (!deptId || ops.checked - event.created_at > 15) continue;
       if (["assigned", "spawned"].includes(event.kind)) this.courierQueue.push({ deptId, label: `업무 전달 · ${who}`, returning: false });
       if (event.kind === "completed") this.courierQueue.push({ deptId, label: `결과 회수 · ${who}`, returning: true });
     }
     if (this.courierQueue.length && !this.side.gen) this.side.gen = this.courierScene();
+  }
+
+  private slackSeen = new Map<string, { reportedDone: number; done: number }>();
+  private slackPrimed = false;
+
+  /** Hermes Desk /api/slack — Slack 요청 원문은 PM 머리 위에, 보고 전달 영수증은 헤르메스 머리 위에 */
+  applySlack(data: LiveSlack) {
+    if (!this.live.on) return;
+    const hermes = this.agentById.get("hermes-lead");
+    for (const conv of data.conversations ?? []) {
+      const prev = this.slackSeen.get(conv.id);
+      const cur = { reportedDone: conv.reportedDone ?? 0, done: conv.done ?? 0 };
+      this.slackSeen.set(conv.id, cur);
+      if (!this.slackPrimed) continue; // 처음 받은 과거 대화는 재생하지 않는다
+      const pmSeed = conv.profile ? STAFF_BY_CALLSIGN[conv.profile] : undefined;
+      const pm = pmSeed ? this.agentById.get(pmSeed.id) : undefined;
+      const title = conv.title ?? conv.requestText ?? "요청";
+      if (!prev) {
+        // 새 요청 — 요청자와 원문 그대로
+        const who = conv.user ?? "요청자 미확인";
+        this.pushLog("#", `Slack ${conv.channel ?? ""} · ${who}: “${firstLine(conv.requestText ?? title, 80)}”`, "yellow");
+        if (pm) {
+          pm.note = { kind: "Slack 요청", text: `${who}: ${conv.requestText ?? title}`, time: this.clockText() };
+          this.say(pm, `요청 · ${who}: ${firstLine(conv.requestText ?? title)}`, 7);
+          if (pm.project) this.spotlightRoom(pm.project, 8);
+        } else if (hermes) {
+          this.say(hermes, `Slack 요청 · ${who}: ${firstLine(conv.requestText ?? title)}`, 7);
+        }
+        continue;
+      }
+      if (cur.reportedDone > prev.reportedDone && hermes) {
+        // 완료 보고가 Slack 에 실제로 전달된 것만 (kanban_notify_receipts 기준)
+        hermes.note = { kind: "Slack 보고 전달", text: `${title} — 완료 ${cur.reportedDone}/${cur.done} 전달됨`, time: this.clockText() };
+        this.say(hermes, `Slack 보고 전달됨 · ${firstLine(title, 30)}`, 6);
+        this.pushLog("📤", `Slack 보고 전달 — ${title} (${cur.reportedDone}/${cur.done})`, "mint");
+      } else if (cur.done > prev.done) {
+        this.pushLog("✅", `작업 완료 기록 — ${title} (${cur.done}건, 보고 전달은 ${cur.reportedDone}건)`, "mint");
+      }
+    }
+    this.slackPrimed = true;
   }
 
   /** 헤르메스가 부서로 업무를 전달하거나 결과를 회수하러 다녀온다 (office.js 의 courier 이동) */
