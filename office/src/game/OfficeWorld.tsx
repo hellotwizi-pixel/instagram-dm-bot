@@ -11,8 +11,8 @@ import type { Agent, Company, DeptStatus, Snapshot } from "./sim";
 import { REPORT_PHASE } from "./sim";
 import { EffectComposer } from "three/examples/jsm/postprocessing/EffectComposer.js";
 import { RenderPass } from "three/examples/jsm/postprocessing/RenderPass.js";
-import { UnrealBloomPass } from "three/examples/jsm/postprocessing/UnrealBloomPass.js";
 import { GTAOPass } from "three/examples/jsm/postprocessing/GTAOPass.js";
+import { OutputPass } from "three/examples/jsm/postprocessing/OutputPass.js";
 import {
   BRIDGES,
   CEO_ROOM,
@@ -56,42 +56,43 @@ type Props = {
 };
 
 const WALL_H = 2.1;
+// 밝은 글래스모피즘 팔레트 (Apple 스타일: 흰 반투명 판, 연한 파랑·보라 배경, 파란 강조)
 const PALETTE = {
-  floor: 0x272d39,
-  corridor: 0x3a4252,
-  corridorLine: 0x50d6ff,
-  roomFloor: 0x333b4a,
-  wall: 0x3b4658,
-  wallTop: 0x566478,
-  glass: 0x7fd6ff,
-  desk: 0x4a3f33,
-  deskTop: 0x6b5a48,
-  monitor: 0x0b1018,
-  screen: 0x5ef2c0,
-  chair: 0x2a2f3a,
-  plantPot: 0x5a4636,
-  plantLeaf: 0x3f9b6c,
-  sofa: 0x4c4670,
-  table: 0x3a4658,
-  metal: 0x2b3446,
-  islandTop: 0x39414f,
-  islandSide: 0x1c2230,
-  islandRock: 0x141924,
-  plank: 0x4a3b2e,
-  plankLine: 0x2c211a,
-  rail: 0x8a949f,
+  floor: 0xe9edf5,
+  corridor: 0xe4eaf6,
+  corridorLine: 0x0a84ff,
+  roomFloor: 0xeef1f7,
+  wall: 0xd6dde9,
+  wallTop: 0xc9d2e2,
+  glass: 0xffffff,
+  desk: 0xb9a892,
+  deskTop: 0xe6dccb,
+  monitor: 0x2c3140,
+  screen: 0x5ac8fa,
+  chair: 0xb8c2d4,
+  plantPot: 0xc9b8a4,
+  plantLeaf: 0x5cbf8a,
+  sofa: 0xb7b3e6,
+  table: 0xe0e6f2,
+  metal: 0xb8c2d4,
+  islandTop: 0xf2f5fb,
+  islandSide: 0xd3dbea,
+  islandRock: 0xc6cfe0,
+  plank: 0xe6edfb,
+  plankLine: 0xc9d4ea,
+  rail: 0xd6dde9,
 };
 
-/** 배경: 보라 → 남색 그라데이션 (안개 대신). 화면에 꽉 차는 2D 텍스처 */
+/** 배경 하늘 구에 입힐 세로 그라데이션 (위 = 파랑, 아래 = 연보라) */
 function gradientBackground(): THREE.CanvasTexture {
   const canvas = document.createElement("canvas");
   canvas.width = 4;
   canvas.height = 512;
   const ctx = canvas.getContext("2d")!;
   const g = ctx.createLinearGradient(0, 0, 0, 512);
-  g.addColorStop(0, "#3a2a6a");
-  g.addColorStop(0.45, "#1f2a5c");
-  g.addColorStop(1, "#0a1330");
+  g.addColorStop(0, "#8fb2ff");
+  g.addColorStop(0.5, "#d3ddf8");
+  g.addColorStop(1, "#e9cff5");
   ctx.fillStyle = g;
   ctx.fillRect(0, 0, 4, 512);
   const tex = new THREE.CanvasTexture(canvas);
@@ -105,13 +106,14 @@ function plankTexture(): THREE.CanvasTexture {
   canvas.width = 64;
   canvas.height = 64;
   const ctx = canvas.getContext("2d")!;
-  ctx.fillStyle = "#5a4636";
+  // 반투명 유리 보도: 연한 판 + 가는 이음선
+  ctx.fillStyle = "#eef3ff";
   ctx.fillRect(0, 0, 64, 64);
   for (let i = 0; i < 4; i += 1) {
-    ctx.fillStyle = i % 2 ? "#54412f" : "#5e4a38";
+    ctx.fillStyle = i % 2 ? "#e9effc" : "#f2f6ff";
     ctx.fillRect(0, i * 16, 64, 16);
-    ctx.fillStyle = "#3a2c20";
-    ctx.fillRect(0, i * 16, 64, 2);
+    ctx.fillStyle = "#d3dcf0";
+    ctx.fillRect(0, i * 16, 64, 1);
   }
   const tex = new THREE.CanvasTexture(canvas);
   tex.colorSpace = THREE.SRGBColorSpace;
@@ -130,8 +132,8 @@ function buildIsland(island: Island, scene: THREE.Scene): void {
   if (tint) topColor.lerp(tint, 0.12);
   const sideColor = new THREE.Color(PALETTE.islandSide);
   if (tint) sideColor.lerp(tint, 0.1);
-  const top = new THREE.MeshStandardMaterial({ color: topColor, roughness: 0.9 });
-  const side = new THREE.MeshStandardMaterial({ color: sideColor, roughness: 0.95 });
+  const top = new THREE.MeshPhysicalMaterial({ color: topColor, roughness: 0.35, metalness: 0, clearcoat: 1, clearcoatRoughness: 0.15, transparent: true, opacity: 0.94 });
+  const side = new THREE.MeshPhysicalMaterial({ color: sideColor, roughness: 0.4, metalness: 0, clearcoat: 0.6, transparent: true, opacity: 0.85 });
   const H = island.level * LEVEL_H;
   const slab = new THREE.Mesh(new THREE.BoxGeometry(island.w, 2.4, island.h), [side, side, top, side, side, side]);
   slab.position.set(cx, H - 1.2, cz);
@@ -141,13 +143,13 @@ function buildIsland(island: Island, scene: THREE.Scene): void {
   // 밑동 (섬이 떠 있는 느낌)
   const rock = new THREE.Mesh(
     new THREE.BoxGeometry(island.w - 2.5, 2.2, island.h - 2.5),
-    new THREE.MeshStandardMaterial({ color: PALETTE.islandRock, roughness: 1 }),
+    new THREE.MeshPhysicalMaterial({ color: PALETTE.islandRock, roughness: 0.5, transparent: true, opacity: 0.7, clearcoat: 0.4 }),
   );
   rock.position.set(cx, H - 3.4, cz);
   g.add(rock);
   const rock2 = new THREE.Mesh(
     new THREE.BoxGeometry(island.w - 6, 1.6, island.h - 6),
-    new THREE.MeshStandardMaterial({ color: 0x0e1220, roughness: 1 }),
+    new THREE.MeshPhysicalMaterial({ color: 0xb9c4d8, roughness: 0.5, transparent: true, opacity: 0.55 }),
   );
   rock2.position.set(cx, H - 5.2, cz);
   g.add(rock2);
@@ -155,13 +157,13 @@ function buildIsland(island: Island, scene: THREE.Scene): void {
   const edgeColor = tint ? tint : new THREE.Color(PALETTE.corridorLine);
   const edge = new THREE.LineSegments(
     new THREE.EdgesGeometry(new THREE.BoxGeometry(island.w, 0.02, island.h)),
-    new THREE.LineBasicMaterial({ color: edgeColor, transparent: true, opacity: island.kind === "project" ? 0.55 : 0.28 }),
+    new THREE.LineBasicMaterial({ color: edgeColor, transparent: true, opacity: island.kind === "project" ? 0.7 : 0.35 }),
   );
   edge.position.set(cx, H + 0.02, cz);
   g.add(edge);
   // 이름표 (프로젝트 섬은 방 이름이 이미 있으므로 생략)
   if (island.kind !== "project") {
-    const label = textSprite(`${island.icon} ${island.name}`, { bg: "rgba(13,19,34,.82)", color: "#dfe7f5", size: 26, border: "rgba(80,214,255,.5)" });
+    const label = textSprite(`${island.icon} ${island.name}`, { bg: "rgba(255,255,255,.86)", color: "#1d1d1f", size: 26, border: "rgba(10,132,255,.45)" });
     label.position.set(island.x + 3.2, H + 2.6, island.y + 0.9);
     label.scale.multiplyScalar(0.85);
     g.add(label);
@@ -170,7 +172,7 @@ function buildIsland(island: Island, scene: THREE.Scene): void {
 }
 
 /** 다리: 널빤지 + 난간 */
-function buildBridge(bridge: Bridge, scene: THREE.Scene, plankMat: THREE.MeshStandardMaterial, railMat: THREE.MeshStandardMaterial): void {
+function buildBridge(bridge: Bridge, scene: THREE.Scene, plankMat: THREE.MeshPhysicalMaterial, railMat: THREE.MeshStandardMaterial): void {
   const g = new THREE.Group();
   const horizontal = bridge.from.y === bridge.to.y;
   const x0 = Math.min(bridge.from.x, bridge.to.x);
@@ -181,7 +183,7 @@ function buildBridge(bridge: Bridge, scene: THREE.Scene, plankMat: THREE.MeshSta
   const wide = bridge.width + 0.2;
   const cx = horizontal ? (x0 + x1 + 1) / 2 : bridge.from.x + bridge.width / 2;
   const cz = horizontal ? bridge.from.y + bridge.width / 2 : (y0 + y1 + 1) / 2;
-  const mat = plankMat.clone();
+  const mat = plankMat.clone() as THREE.MeshPhysicalMaterial;
   mat.map = plankMat.map!.clone();
   mat.map.needsUpdate = true;
   mat.map.repeat.set(horizontal ? len / 2 : 1, horizontal ? 1 : len / 2);
@@ -216,7 +218,7 @@ function buildBridge(bridge: Bridge, scene: THREE.Scene, plankMat: THREE.MeshSta
   }
   // 다리 밑 받침 (대로만)
   if (bridge.kind === "avenue") {
-    const beam = new THREE.Mesh(new THREE.BoxGeometry(horizontal ? len : wide - 0.6, 0.6, horizontal ? wide - 0.6 : len), new THREE.MeshStandardMaterial({ color: PALETTE.islandSide, roughness: 1 }));
+    const beam = new THREE.Mesh(new THREE.BoxGeometry(horizontal ? len : wide - 0.6, 0.6, horizontal ? wide - 0.6 : len), new THREE.MeshPhysicalMaterial({ color: PALETTE.islandSide, roughness: 0.4, transparent: true, opacity: 0.8 }));
     beam.position.set(cx, hStart - 0.75, cz);
     g.add(beam);
   }
@@ -275,7 +277,7 @@ function textSprite(text: string, opts: { bg: string; color: string; size?: numb
   lines.forEach((line, i) => ctx.fillText(line, pad, pad * 0.8 + i * size * 1.3));
   const texture = new THREE.CanvasTexture(canvas);
   texture.colorSpace = THREE.SRGBColorSpace;
-  const material = new THREE.SpriteMaterial({ map: texture, transparent: true, depthTest: false });
+  const material = new THREE.SpriteMaterial({ map: texture, transparent: true, depthTest: false, depthWrite: false });
   const sprite = new THREE.Sprite(material);
   const scale = 0.024;
   sprite.scale.set(canvas.width * scale, canvas.height * scale, 1);
@@ -365,10 +367,10 @@ function makeAvatar(agent: Agent, scene: THREE.Scene): Avatar {
     group.add(crown);
   }
   const label = textSprite(`${agent.name}${agent.rank === "lead" ? (agent.project ? " · PM" : " · 팀장") : agent.rank === "ceo" ? " · 대표" : ""}`, {
-    bg: agent.rank === "ceo" ? "rgba(255,207,110,.95)" : "rgba(13,19,34,.9)",
-    color: agent.rank === "ceo" ? "#1a1400" : "#dbe7f5",
+    bg: agent.rank === "ceo" ? "rgba(255,214,10,.95)" : "rgba(255,255,255,.9)",
+    color: "#1d1d1f",
     size: 24,
-    border: agent.rank === "lead" ? "#50d6ff" : undefined,
+    border: agent.rank === "lead" ? "#0a84ff" : "rgba(120,130,160,.35)",
   });
   label.position.y = 1.55 * big;
   label.scale.multiplyScalar(0.55);
@@ -431,7 +433,7 @@ function buildRoom(room: Room, scene: THREE.Scene, mats: ReturnType<typeof makeM
   // 상단 프레임 (상태 색)
   const frame = new THREE.Mesh(
     new THREE.BoxGeometry(room.w + 0.05, 0.08, room.h + 0.05),
-    new THREE.MeshStandardMaterial({ color: room.color ? new THREE.Color(room.color) : 0x46536a, emissive: 0x000000, roughness: 0.4 }),
+    new THREE.MeshStandardMaterial({ color: room.color ? new THREE.Color(room.color) : 0x9fb0cc, emissive: 0x000000, roughness: 0.4 }),
   );
   frame.position.set(cx, WALL_H + 0.02, cz);
   const inner = new THREE.Mesh(new THREE.BoxGeometry(room.w - 0.5, 0.1, room.h - 0.5), new THREE.MeshBasicMaterial({ color: 0x000000 }));
@@ -465,10 +467,10 @@ function buildRoom(room: Room, scene: THREE.Scene, mats: ReturnType<typeof makeM
   cord.receiveShadow = false;
   // 이름표
   const label = textSprite(`${room.icon} ${room.name}`, {
-    bg: room.color ? room.color : room.kind === "ceo" ? "#ffcf6e" : "#0d1322",
-    color: room.kind === "ceo" ? "#1a1400" : "#ffffff",
+    bg: room.color ? room.color : room.kind === "ceo" ? "#ffd60a" : "rgba(255,255,255,.9)",
+    color: room.kind === "ceo" ? "#1a1400" : room.color ? "#ffffff" : "#1d1d1f",
     size: 30,
-    border: room.kind === "project" ? undefined : "#50d6ff",
+    border: room.kind === "project" ? undefined : "rgba(10,132,255,.5)",
   });
   label.position.set(cx, WALL_H + 0.9, room.y + 0.6);
   label.scale.multiplyScalar(0.9);
@@ -580,7 +582,7 @@ function buildProp(prop: Prop, scene: THREE.Scene, mats: ReturnType<typeof makeM
       );
       face.receiveShadow = false;
       if (prop.label) {
-        const label = textSprite(prop.label, { bg: "rgba(0,0,0,0)", color: prop.kind === "board" ? "#ffffff" : "#5ef2c0", size: 22 });
+        const label = textSprite(prop.label, { bg: "rgba(0,0,0,0)", color: prop.kind === "board" ? "#ffffff" : "#e8fbff", size: 22 });
         label.position.set(cx, 1.45, cz + 0.2);
         label.scale.multiplyScalar(0.6);
         g.add(label);
@@ -696,16 +698,16 @@ function buildReactor(scene: THREE.Scene) {
   const g = new THREE.Group();
   g.position.set(MIMIR_CENTER.x + 0.5, elevationAt(MIMIR_CENTER.x + 0.5, MIMIR_CENTER.y + 0.5), MIMIR_CENTER.y + 0.5);
   const r = MIMIR_RADIUS;
-  const base = new THREE.Mesh(new THREE.CylinderGeometry(r + 0.4, r + 0.8, 0.5, 48), new THREE.MeshStandardMaterial({ color: 0x1b2230, roughness: 0.5, metalness: 0.6 }));
+  const base = new THREE.Mesh(new THREE.CylinderGeometry(r + 0.4, r + 0.8, 0.5, 48), new THREE.MeshPhysicalMaterial({ color: 0xdfe6f3, roughness: 0.3, metalness: 0.1, clearcoat: 1 }));
   base.position.y = 0.25;
   base.receiveShadow = true;
-  const housing = new THREE.Mesh(new THREE.TorusGeometry(r - 0.6, 0.45, 12, 48), new THREE.MeshStandardMaterial({ color: 0x3a4658, roughness: 0.35, metalness: 0.8 }));
+  const housing = new THREE.Mesh(new THREE.TorusGeometry(r - 0.6, 0.45, 12, 48), new THREE.MeshStandardMaterial({ color: 0xd8e0ee, roughness: 0.35, metalness: 0.25 }));
   housing.rotation.x = Math.PI / 2;
   housing.position.y = 0.7;
   housing.castShadow = true;
   const notches = new THREE.Group();
   for (let i = 0; i < 10; i += 1) {
-    const n = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.7, 1.1), new THREE.MeshStandardMaterial({ color: 0x0d1219, roughness: 0.6, metalness: 0.5 }));
+    const n = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.7, 1.1), new THREE.MeshStandardMaterial({ color: 0x8e9bb5, roughness: 0.5, metalness: 0.5 }));
     const a = (i / 10) * Math.PI * 2;
     n.position.set(Math.cos(a) * (r - 0.6), 0.7, Math.sin(a) * (r - 0.6));
     n.rotation.y = -a;
@@ -716,7 +718,7 @@ function buildReactor(scene: THREE.Scene) {
   coil.position.y = 0.75;
   const struts = new THREE.Group();
   for (let i = 0; i < 3; i += 1) {
-    const s = new THREE.Mesh(new THREE.BoxGeometry(r - 2.2, 0.2, 0.35), new THREE.MeshStandardMaterial({ color: 0x3a4658, roughness: 0.4, metalness: 0.8 }));
+    const s = new THREE.Mesh(new THREE.BoxGeometry(r - 2.2, 0.2, 0.35), new THREE.MeshStandardMaterial({ color: 0xd8e0ee, roughness: 0.35, metalness: 0.25 }));
     s.position.set((r - 2.2) / 2, 0.75, 0);
     const pivot = new THREE.Group();
     pivot.rotation.y = (i / 3) * Math.PI * 2;
@@ -729,7 +731,7 @@ function buildReactor(scene: THREE.Scene) {
   glow.position.y = 0.9;
   const light = new THREE.PointLight(0x50d6ff, 40, 30, 1.6);
   light.position.y = 2.2;
-  const label = textSprite("MIMIR · 회사 기억", { bg: "rgba(13,19,34,.85)", color: "#9fe8ff", size: 30, border: "#50d6ff" });
+  const label = textSprite("MIMIR · 회사 기억", { bg: "rgba(255,255,255,.88)", color: "#0a6fd6", size: 30, border: "#5ac8fa" });
   label.position.y = 3.2;
   label.scale.multiplyScalar(0.9);
   g.add(base, housing, notches, coil, struts, core, glow, light, label);
@@ -740,24 +742,24 @@ function buildReactor(scene: THREE.Scene) {
 function makeMaterials() {
   return {
     roomFloor: new THREE.MeshStandardMaterial({ color: PALETTE.roomFloor, roughness: 0.9 }),
-    wall: new THREE.MeshStandardMaterial({ color: PALETTE.wall, roughness: 0.6, metalness: 0.2 }),
-    glass: new THREE.MeshStandardMaterial({ color: PALETTE.glass, transparent: true, opacity: 0.14, roughness: 0.1, metalness: 0.2, depthWrite: false }),
-    doorGlow: new THREE.MeshBasicMaterial({ color: 0x50d6ff }),
+    wall: new THREE.MeshPhysicalMaterial({ color: PALETTE.wall, roughness: 0.35, metalness: 0, clearcoat: 0.8 }),
+    glass: new THREE.MeshPhysicalMaterial({ color: PALETTE.glass, transparent: true, opacity: 0.26, roughness: 0.05, metalness: 0, clearcoat: 1, depthWrite: false }),
+    doorGlow: new THREE.MeshBasicMaterial({ color: 0x0a84ff }),
     desk: new THREE.MeshStandardMaterial({ color: PALETTE.desk, roughness: 0.7 }),
     deskTop: new THREE.MeshStandardMaterial({ color: PALETTE.deskTop, roughness: 0.55 }),
-    ceoDeskTop: new THREE.MeshStandardMaterial({ color: 0x8a6d3b, roughness: 0.4, metalness: 0.1 }),
-    tableTop: new THREE.MeshStandardMaterial({ color: 0x4a5670, roughness: 0.4 }),
+    ceoDeskTop: new THREE.MeshStandardMaterial({ color: 0xd9c39a, roughness: 0.4, metalness: 0.1 }),
+    tableTop: new THREE.MeshStandardMaterial({ color: 0xe4e9f3, roughness: 0.4 }),
     monitor: new THREE.MeshStandardMaterial({ color: PALETTE.monitor, roughness: 0.4, metalness: 0.4 }),
-    screen: new THREE.MeshStandardMaterial({ color: 0x0f3a3a, emissive: PALETTE.screen, emissiveIntensity: 0.9, roughness: 0.3 }),
-    screenGold: new THREE.MeshStandardMaterial({ color: 0x3a2a10, emissive: 0xffcf6e, emissiveIntensity: 0.8, roughness: 0.3 }),
+    screen: new THREE.MeshStandardMaterial({ color: 0x2b4a66, emissive: PALETTE.screen, emissiveIntensity: 0.6, roughness: 0.3 }),
+    screenGold: new THREE.MeshStandardMaterial({ color: 0x5a4a20, emissive: 0xffcf6e, emissiveIntensity: 0.6, roughness: 0.3 }),
     chair: new THREE.MeshStandardMaterial({ color: PALETTE.chair, roughness: 0.8 }),
     metal: new THREE.MeshStandardMaterial({ color: PALETTE.metal, roughness: 0.4, metalness: 0.7 }),
     plantPot: new THREE.MeshStandardMaterial({ color: PALETTE.plantPot, roughness: 0.9 }),
     plantLeaf: new THREE.MeshStandardMaterial({ color: PALETTE.plantLeaf, roughness: 0.8 }),
     sofa: new THREE.MeshStandardMaterial({ color: PALETTE.sofa, roughness: 0.9 }),
     white: new THREE.MeshStandardMaterial({ color: 0xe8edf5, roughness: 0.6 }),
-    rug: new THREE.MeshStandardMaterial({ color: 0x3a3325, roughness: 1 }),
-    rugSoft: new THREE.MeshStandardMaterial({ color: 0x2b3446, roughness: 1 }),
+    rug: new THREE.MeshStandardMaterial({ color: 0xd8cfc0, roughness: 1 }),
+    rugSoft: new THREE.MeshStandardMaterial({ color: 0xe3e8f2, roughness: 1 }),
     lamp: new THREE.MeshStandardMaterial({ color: 0xfff4dc, emissive: 0xfff1c9, emissiveIntensity: 1.6, roughness: 0.4 }),
   };
 }
@@ -817,13 +819,18 @@ export default function OfficeWorld({ engine, snap, selectedId, follow, onSelect
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
     renderer.shadowMap.enabled = true;
     renderer.shadowMap.type = THREE.PCFSoftShadowMap;
-    renderer.toneMapping = THREE.ACESFilmicToneMapping;
-    renderer.toneMappingExposure = 1.25;
+    // ACES 는 파스텔 색을 회색으로 눌러서, 색을 보존하는 Neutral 톤매핑을 쓴다
+    renderer.toneMapping = THREE.NeutralToneMapping;
+    renderer.toneMappingExposure = 1.0;
     renderer.outputColorSpace = THREE.SRGBColorSpace;
     mount.appendChild(renderer.domElement);
 
     const scene = new THREE.Scene();
-    scene.background = gradientBackground();
+    // 배경: 카메라 뒤쪽 멀리 붙인 판에 화면 세로 그라데이션. 직교 카메라라 매 프레임 프러스텀 크기에 맞춘다
+    const sky = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), new THREE.MeshBasicMaterial({ map: gradientBackground(), toneMapped: false, depthWrite: false }));
+    sky.frustumCulled = false;
+    sky.renderOrder = -10;
+    sky.position.z = -650;
 
     // 고정 아이소메트릭 카메라 (직교 투영). 회전 없음, 이동·확대만.
     const FRUSTUM = 50; // zoom 1 일 때 화면 세로 반높이 (월드 단위)
@@ -832,6 +839,8 @@ export default function OfficeWorld({ engine, snap, selectedId, follow, onSelect
     const WORLD_MID = new THREE.Vector3(COLS / 2, 0, ROWS / 2);
     const HOME = WORLD_MID.clone();
     const camera = new THREE.OrthographicCamera(-FRUSTUM, FRUSTUM, FRUSTUM, -FRUSTUM, 1, 700);
+    camera.add(sky);
+    scene.add(camera);
     const controls = new OrbitControls(camera, renderer.domElement);
     controls.enableDamping = true;
     controls.dampingFactor = 0.1;
@@ -853,9 +862,9 @@ export default function OfficeWorld({ engine, snap, selectedId, follow, onSelect
     };
 
     // 조명
-    scene.add(new THREE.HemisphereLight(0xbcd6ff, 0x2a2622, 1.25));
-    scene.add(new THREE.AmbientLight(0x6b7a99, 0.45));
-    const sun = new THREE.DirectionalLight(0xfff1d6, 2.4);
+    scene.add(new THREE.HemisphereLight(0xf4f7ff, 0xd5dcea, 1.0));
+    scene.add(new THREE.AmbientLight(0xffffff, 0.45));
+    const sun = new THREE.DirectionalLight(0xfff6e6, 1.7);
     sun.position.set(COLS * 0.3, 70, ROWS * 0.15);
     sun.castShadow = true;
     sun.shadow.mapSize.set(4096, 4096);
@@ -872,14 +881,14 @@ export default function OfficeWorld({ engine, snap, selectedId, follow, onSelect
 
     // 섬 + 다리 (섬 밖은 허공)
     for (const island of ISLANDS) buildIsland(island, scene);
-    const plankMat = new THREE.MeshStandardMaterial({ map: plankTexture(), roughness: 0.9 });
-    const railMat = new THREE.MeshStandardMaterial({ color: PALETTE.rail, roughness: 0.5, metalness: 0.5 });
+    const plankMat = new THREE.MeshPhysicalMaterial({ map: plankTexture(), roughness: 0.3, clearcoat: 1, clearcoatRoughness: 0.1, transparent: true, opacity: 0.9 });
+    const railMat = new THREE.MeshStandardMaterial({ color: PALETTE.rail, roughness: 0.25, metalness: 0.6 });
     for (const bridge of BRIDGES) buildBridge(bridge, scene, plankMat, railMat);
     // 출입구 매트
     const entranceH = elevationAt(ENTRANCE.x + 0.5, ENTRANCE.y + 0.5);
-    const mat = addBox(scene, 5, 0.06, 1.6, ENTRANCE.x + 1, entranceH + 0.03, ENTRANCE.y - 0.6, new THREE.MeshStandardMaterial({ color: 0x1f6f8a, emissive: 0x50d6ff, emissiveIntensity: 0.25 }), false);
+    const mat = addBox(scene, 5, 0.06, 1.6, ENTRANCE.x + 1, entranceH + 0.03, ENTRANCE.y - 0.6, new THREE.MeshStandardMaterial({ color: 0x9fd4ff, emissive: 0x5ac8fa, emissiveIntensity: 0.2 }), false);
     mat.receiveShadow = false;
-    const entranceLabel = textSprite("ENTRANCE", { bg: "rgba(13,19,34,.85)", color: "#50d6ff", size: 22, border: "#50d6ff" });
+    const entranceLabel = textSprite("ENTRANCE", { bg: "rgba(255,255,255,.9)", color: "#0a84ff", size: 22, border: "#5ac8fa" });
     entranceLabel.position.set(ENTRANCE.x + 1, entranceH + 1.2, ENTRANCE.y - 0.6);
     entranceLabel.scale.multiplyScalar(0.7);
     scene.add(entranceLabel);
@@ -953,13 +962,33 @@ export default function OfficeWorld({ engine, snap, selectedId, follow, onSelect
     const ao = new GTAOPass(scene, camera, 1, 1);
     ao.output = GTAOPass.OUTPUT.Default;
     ao.updateGtaoMaterial({ radius: 1.6, distanceExponent: 1, thickness: 1, scale: 1, samples: 12, distanceFallOff: 1, screenSpaceRadius: false });
-    // GTAO 가 월드 원점 근처(0~2.5칸)에 검은 사각형 인공물을 만든다 (씬이 비어 있어도 생김). 그 영역을 AO 계산에서 뺀다
-    ao.setSceneClipBox(new THREE.Box3(new THREE.Vector3(3, -8, 2.5), new THREE.Vector3(COLS, 12, ROWS)));
+    // GTAO 는 씬 클립 박스의 모서리 자리에 검은 조각 인공물을 그린다 (기본 박스는 원점 ±1). 박스를 화면 밖 멀리 둔다
+    ao.setSceneClipBox(new THREE.Box3(new THREE.Vector3(-400, -60, -400), new THREE.Vector3(COLS + 400, 60, ROWS + 400)));
     ao.updatePdMaterial({ lumaPhi: 10, depthPhi: 2, normalPhi: 3, radius: 4, radiusExponent: 1, rings: 2, samples: 16 });
-    ao.blendIntensity = 0.7;
+    ao.blendIntensity = 0.55;
+    // AO 의 노멀 패스는 스프라이트(이름표·말풍선)를 세로 판으로 그려서 뒤에 어두운 마름모가 생긴다 → 그 패스 동안 스프라이트를 숨긴다
+    const hiddenSprites: THREE.Object3D[] = [];
+    const aoHooks = ao as unknown as { overrideVisibility: () => void; restoreVisibility: () => void };
+    const baseOverride = aoHooks.overrideVisibility.bind(ao);
+    const baseRestore = aoHooks.restoreVisibility.bind(ao);
+    aoHooks.overrideVisibility = () => {
+      baseOverride();
+      scene.traverse((o) => {
+        if ((o as THREE.Sprite).isSprite && o.visible) {
+          o.visible = false;
+          hiddenSprites.push(o);
+        }
+      });
+    };
+    aoHooks.restoreVisibility = () => {
+      baseRestore();
+      for (const o of hiddenSprites) o.visible = true;
+      hiddenSprites.length = 0;
+    };
     if (new URLSearchParams(location.search).get("ao") !== "0") composer.addPass(ao);
-    const bloom = new UnrealBloomPass(new THREE.Vector2(1, 1), 0.5, 0.6, 0.84);
-    composer.addPass(bloom);
+    // 블룸은 뺐다: 밝은 유리 테마에서는 배경까지 뿌옇게 만들어서. 리액터 빛은 발광 재질 + 점광원으로 충분하다
+    // 톤매핑 + sRGB 변환은 마지막 OutputPass 가 맡는다
+    composer.addPass(new OutputPass());
     const resize = () => {
       const w = mount.clientWidth;
       const h = mount.clientHeight;
@@ -1040,6 +1069,7 @@ export default function OfficeWorld({ engine, snap, selectedId, follow, onSelect
       // 카메라는 항상 같은 방향에서 목표점을 본다 (아이소메트릭 고정)
       tmpCam.copy(controls.target).addScaledVector(ISO_DIR, ISO_DIST);
       camera.position.copy(tmpCam);
+      sky.scale.set(((camera.right - camera.left) / camera.zoom) * 1.02, ((camera.top - camera.bottom) / camera.zoom) * 1.02, 1);
       controls.update();
 
       // 방 프레임 색 = 상태
@@ -1052,7 +1082,7 @@ export default function OfficeWorld({ engine, snap, selectedId, follow, onSelect
         const target = status && status !== "대기" ? new THREE.Color(STATUS_COLOR[status]) : new THREE.Color(PALETTE.roomFloor);
         floorMat.emissive.lerp(status && status !== "대기" ? target.clone().multiplyScalar(0.08) : new THREE.Color(0), 0.1);
         floorMat.color.lerp(status && status !== "대기" ? new THREE.Color(PALETTE.roomFloor).lerp(target, 0.12) : new THREE.Color(PALETTE.roomFloor), 0.1);
-        if (hot) floorMat.emissive.lerp(new THREE.Color(0x50d6ff).multiplyScalar(0.12 + Math.sin(now / 250) * 0.05), 0.2);
+        if (hot) floorMat.emissive.lerp(new THREE.Color(0x0a84ff).multiplyScalar(0.10 + Math.sin(now / 250) * 0.04), 0.2);
       }
 
       // 리액터
@@ -1141,7 +1171,7 @@ export default function OfficeWorld({ engine, snap, selectedId, follow, onSelect
         av.label.visible = !debugNoLabels;
         if (av.bubble) av.bubble.visible = !debugNoLabels;
         av.label.material.opacity = picked === agent.id ? 1 : 0.92;
-        (av.label.material as THREE.SpriteMaterial).color.set(picked === agent.id ? 0xffcf6e : 0xffffff);
+        (av.label.material as THREE.SpriteMaterial).color.set(picked === agent.id ? 0xffd60a : 0xffffff);
         // 말풍선
         const text = agent.speech ?? "";
         if (av.bubbleText !== text) {
@@ -1153,10 +1183,10 @@ export default function OfficeWorld({ engine, snap, selectedId, follow, onSelect
           }
           if (text) {
             av.bubble = textSprite(text, {
-              bg: agent.speechKind === "think" ? "rgba(26,26,51,.95)" : "rgba(13,19,34,.95)",
-              color: agent.speechKind === "think" ? "#c9c1ff" : "#dbe7f5",
+              bg: agent.speechKind === "think" ? "rgba(240,238,255,.96)" : "rgba(255,255,255,.96)",
+              color: agent.speechKind === "think" ? "#4b47c9" : "#1d1d1f",
               size: 24,
-              border: agent.speechKind === "think" ? "#8b7cff" : "#50d6ff",
+              border: agent.speechKind === "think" ? "#7d78ff" : "#0a84ff",
             });
             av.bubble.position.y = 2.15 + lift;
             av.bubble.scale.multiplyScalar(0.6);
