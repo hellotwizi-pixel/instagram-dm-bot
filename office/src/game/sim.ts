@@ -100,6 +100,8 @@ export type Agent = {
   project: string | null;
   /** 실시간 모드에서 이 직원이 남긴 마지막 기록 원문 (완료 요약·진행 메모·차단 사유·요청) */
   note: { kind: string; text: string; time: string } | null;
+  /** 지금 옮기는 업무를 시킨 사람 — 이동 중 머리 위 상자에 적힌다. 기록에 없으면 null (상자 없음) */
+  requester: string | null;
 };
 
 export type LogEntry = { id: number; time: string; icon: string; text: string; tone: string };
@@ -324,7 +326,9 @@ export class Company {
   /** 시나리오 장면에 참여 중인 직원 — 자율 행동(커피·잡담)이 끼어들지 못하게 잠근다 */
   private locked = new Set<string>();
   /** 실시간 모드에서 헤르메스가 배달할 경로 (부서 id) */
-  private courierQueue: { deptId: string; label: string; returning: boolean }[] = [];
+  private courierQueue: { deptId: string; label: string; returning: boolean; taskId?: string }[] = [];
+  /** Slack 기록으로 알아낸 작업별 프로젝트·요청자 (작업 id → {project, requester}) */
+  private taskOrigin = new Map<string, { project: string | null; requester: string | null }>();
   private liveTaskById = new Map<string, LiveTask>();
 
   constructor() {
@@ -410,6 +414,7 @@ export class Company {
       liveKey: "",
       project: seed.project ?? null,
       note: null,
+      requester: null,
     };
     this.agents.push(agent);
     this.agentById.set(agent.id, agent);
@@ -539,8 +544,12 @@ export class Company {
     this.pushLog("#", `Slack ${REQUEST.channel} · ${REQUEST.requester}: “${REQUEST.text}”`, "yellow");
     this.pushChat("staff", HERMES, `${REQUEST.channel}에서 ${REQUEST.requester}님 요청 접수했어요.\n“${REQUEST.text}”\n${project.name} 방의 ${pm.name}에게 전달합니다. 분담은 PM 이 해요.`);
     this.spotlightRoom(project.id, 10);
+    hermes.project = project.id;
+    hermes.requester = REQUEST.requester;
     this.goto(hermes, projectSpot(project.id), "이동 중");
     yield this.allFree([hermes]);
+    hermes.project = null;
+    hermes.requester = null;
     hermes.anim = "talk";
     this.say(hermes, "요청 보드에 올렸어요. 분담 부탁해요.", 3);
     this.projectStatus[project.id] = "작업 중";
@@ -711,7 +720,7 @@ export class Company {
     crew.forEach((agent, i) => {
       this.enqueue(
         agent,
-        { k: "fn", fn: () => { agent.project = projectId; } },
+        { k: "fn", fn: () => { agent.project = projectId; agent.requester = projectId ? REQUEST.requester : null; } },
         { k: "wait", dur: i * 0.35 },
         { k: "walk", to: agent.home },
         { k: "face", dir: "up" },
@@ -729,7 +738,10 @@ export class Company {
     if (this.deptStatus[deptId] === "완료") return;
     this.deptStatus[deptId] = "완료";
     this.unlock(this.deptAgents(deptId));
-    for (const a of this.deptAgents(deptId)) if (!a.project || !PROJECT_PM[a.project] || PROJECT_PM[a.project].id !== a.id) a.project = null;
+    for (const a of this.deptAgents(deptId)) {
+      if (!a.project || !PROJECT_PM[a.project] || PROJECT_PM[a.project].id !== a.id) a.project = null;
+      a.requester = null;
+    }
     const agent = this.leadOf(deptId);
     if (agent) this.say(agent, "완료했어요!", 2.4);
     this.pushLog(roomOf(deptId).icon, `${roomOf(deptId).name} 완료 — ${DEPT_BRIEF[deptId].report}`, "mint");
@@ -809,7 +821,7 @@ export class Company {
   }
 
   /** 부서 간 전달 — 직접 걸어가서 말하고 돌아온다 */
-  private *deliver(fromId: string, toDeptId: string, line: string, reply: string) {
+  private *deliver(fromId: string, toDeptId: string, line: string, reply: string, carry: { project: string; requester: string } | null = { project: REQUEST.project, requester: REQUEST.requester }) {
     const from = this.agent(fromId);
     const toLead = this.leadOf(toDeptId);
     const room = roomOf(toDeptId);
@@ -819,8 +831,17 @@ export class Company {
 
     this.lock(toLead ? [from, toLead] : [from]);
     this.stand(from);
+    const fixedProject = from.project && PROJECT_PM[from.project]?.id === from.id ? from.project : null;
+    if (carry) {
+      from.project = carry.project;
+      from.requester = carry.requester;
+    }
     this.goto(from, walkable(spot.x, spot.y) ? spot : doorApproach(room), "이동 중");
     yield this.allFree([from]);
+    // 상자를 내려놓는다
+    from.requester = null;
+    if (!fixedProject) from.project = null;
+    else from.project = fixedProject;
     from.anim = "talk";
     this.say(from, line, 3);
     this.pushLog("🤝", `${from.name} → ${room.name}: “${line}”`, "pink");
@@ -1353,7 +1374,8 @@ export class Company {
       else if (live === "working" || mine.some((t) => LIVE_ACTIVE.has(t.status))) state = "working";
       else if (mine.some((t) => t.status === "blocked")) state = "blocked";
       const head = mine.find((t) => LIVE_ACTIVE.has(t.status)) ?? mine.find((t) => t.status === "blocked") ?? mine[0];
-      const key = `${state}:${head?.id ?? ""}:${head?.status ?? ""}`;
+      const origin = head ? this.taskOrigin.get(head.id) : undefined;
+      const key = `${state}:${head?.id ?? ""}:${head?.status ?? ""}:${origin?.project ?? ""}:${origin?.requester ?? ""}`;
       if (agent.liveKey === key) continue;
       agent.liveKey = key;
       if (this.locked.has(agent.id)) continue;
@@ -1361,6 +1383,10 @@ export class Company {
       agent.current = null;
       agent.progress = 0; // 실제 진행률은 기록에 없다 — 임의로 만들지 않는다
       agent.taskLabel = head?.title ?? DEPT_BRIEF[agent.deptId]?.task ?? "대기";
+      // 이 작업이 어느 프로젝트의 누구 요청인지는 Slack 기록에서만 가져온다 (없으면 상자 없음)
+      const isPm = agent.project !== null && PROJECT_PM[agent.project]?.id === agent.id;
+      if (!isPm) agent.project = origin?.project ?? null;
+      agent.requester = origin?.requester ?? null;
       const atHome = Math.abs(agent.x - agent.home.x) < 0.2 && Math.abs(agent.y - agent.home.y) < 0.2;
       if (!atHome) this.enqueue(agent, { k: "walk", to: agent.home }, { k: "face", dir: "up" });
       if (state === "working") {
@@ -1400,8 +1426,8 @@ export class Company {
         if (!think) speakerAgent.anim = speakerAgent.anim === "type" ? "type" : "talk";
       }
       if (!deptId || ops.checked - event.created_at > 15) continue;
-      if (["assigned", "spawned"].includes(event.kind)) this.courierQueue.push({ deptId, label: `업무 전달 · ${who}`, returning: false });
-      if (event.kind === "completed") this.courierQueue.push({ deptId, label: `결과 회수 · ${who}`, returning: true });
+      if (["assigned", "spawned"].includes(event.kind)) this.courierQueue.push({ deptId, label: `업무 전달 · ${who}`, returning: false, taskId: event.task_id });
+      if (event.kind === "completed") this.courierQueue.push({ deptId, label: `결과 회수 · ${who}`, returning: true, taskId: event.task_id });
     }
     if (this.courierQueue.length && !this.side.gen) this.side.gen = this.courierScene();
   }
@@ -1416,6 +1442,10 @@ export class Company {
     // 관측 플러그인이 없으면 ops.requests 가 비므로, Slack 에 기록된 요청 수를 대신 쓴다
     const conversations = data.conversations ?? [];
     this.live.requests = Math.max(this.live.requests, conversations.filter((c) => (c.taskIds?.length ?? 0) > 0 || c.requestText).length);
+    for (const conv of conversations) {
+      const project = conv.profile ? PROJECTS.find((p) => p.pm === conv.profile)?.id ?? null : null;
+      for (const taskId of conv.taskIds ?? []) this.taskOrigin.set(taskId, { project, requester: conv.user ?? null });
+    }
     for (const conv of data.conversations ?? []) {
       const prev = this.slackSeen.get(conv.id);
       const cur = { reportedDone: conv.reportedDone ?? 0, done: conv.done ?? 0 };
@@ -1459,12 +1489,26 @@ export class Company {
       this.stand(hermes);
       this.say(hermes, job.label, 2.4);
       this.spotlightRoom(job.deptId, 8);
+      const origin = job.taskId ? this.taskOrigin.get(job.taskId) : undefined;
+      // 전달 갈 때 상자를 들고 간다 (회수는 돌아올 때). 요청자·프로젝트가 기록에 없으면 상자 없음
+      if (!job.returning && origin?.requester) {
+        hermes.project = origin.project;
+        hermes.requester = origin.requester;
+      }
       this.goto(hermes, doorApproach(room), "이동 중");
       yield this.allFree([hermes]);
+      hermes.project = null;
+      hermes.requester = null;
       // 실시간 모드에서는 상대 팀장의 대답을 지어내지 않는다 — 기록에 없는 대사이기 때문
       yield 1.4;
+      if (job.returning && origin?.requester) {
+        hermes.project = origin.project;
+        hermes.requester = origin.requester;
+      }
       this.sitAtDesk(hermes);
       yield this.allFree([hermes]);
+      hermes.project = null;
+      hermes.requester = null;
       this.unlock([hermes]);
     }
   }

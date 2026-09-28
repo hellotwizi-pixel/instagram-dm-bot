@@ -126,6 +126,10 @@ type Avatar = {
   bubble: THREE.Sprite | null;
   bubbleText: string;
   projectId: string | null;
+  box: THREE.Group;
+  boxMat: THREE.MeshStandardMaterial;
+  boxLabel: THREE.Sprite | null;
+  boxKey: string;
   t: number;
 };
 
@@ -189,9 +193,21 @@ function makeAvatar(agent: Agent, scene: THREE.Scene): Avatar {
   label.position.y = 1.55 * big;
   label.scale.multiplyScalar(0.55);
 
+  // 머리 위 업무 상자 — 이동 중에만 보인다. 색 = 프로젝트, 글자 = 시킨 사람
+  const box = new THREE.Group();
+  const boxMat = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.55 });
+  const crate = new THREE.Mesh(new THREE.BoxGeometry(0.46, 0.4, 0.46), boxMat);
+  crate.castShadow = true;
+  const tape = new THREE.Mesh(new THREE.BoxGeometry(0.48, 0.42, 0.1), new THREE.MeshStandardMaterial({ color: 0xf2e8d0, roughness: 0.6 }));
+  const tape2 = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.42, 0.48), new THREE.MeshStandardMaterial({ color: 0xf2e8d0, roughness: 0.6 }));
+  box.add(crate, tape, tape2);
+  box.position.y = 1.62 * big;
+  box.visible = false;
+  group.add(box);
+
   group.add(body, head, cap, legL, legR, armL, armR, eyeL, eyeR, ring, marker, label);
   scene.add(group);
-  return { group, body, head, legL, legR, armL, armR, ring, marker, label, bubble: null, bubbleText: "", projectId: null, t: Math.random() * 10 };
+  return { group, body, head, legL, legR, armL, armR, ring, marker, label, bubble: null, bubbleText: "", projectId: null, box, boxMat, boxLabel: null, boxKey: "", t: Math.random() * 10 };
 }
 
 function addBox(parent: THREE.Object3D, w: number, h: number, d: number, x: number, y: number, z: number, material: THREE.Material, shadow = true) {
@@ -737,8 +753,35 @@ export default function OfficeWorld({ engine, snap, selectedId, follow, onSelect
         const swing = walking && !reduced ? Math.sin(av.t * 14) * 0.5 : 0;
         av.legL.rotation.x = swing;
         av.legR.rotation.x = -swing;
-        av.armL.rotation.x = agent.anim === "type" && !reduced ? -0.9 + Math.sin(av.t * 18) * 0.15 : -swing * 0.6;
-        av.armR.rotation.x = agent.anim === "type" && !reduced ? -0.9 - Math.sin(av.t * 18) * 0.15 : swing * 0.6;
+        // 업무 상자: 프로젝트·요청자가 기록에 있고 이동 중일 때만. 이름표는 위로 밀어 올린다
+        const carrying = walking && Boolean(agent.project && agent.requester);
+        av.box.visible = carrying;
+        av.label.position.y = carrying ? 2.05 : 1.55;
+        if (carrying) {
+          const key = `${agent.project}|${agent.requester}`;
+          if (av.boxKey !== key) {
+            av.boxKey = key;
+            av.boxMat.color.set(PROJECT_COLOR[agent.project as string] ?? "#50d6ff");
+            if (av.boxLabel) {
+              av.box.remove(av.boxLabel);
+              disposeSprite(av.boxLabel);
+            }
+            av.boxLabel = textSprite(agent.requester as string, { bg: "rgba(255,255,255,.96)", color: "#1a1f2b", size: 26, pad: 10 });
+            av.boxLabel.scale.multiplyScalar(0.5);
+            av.boxLabel.position.set(0, 0.02, 0.28);
+            av.box.add(av.boxLabel);
+          }
+          av.box.position.y = 1.62 + (!reduced ? Math.abs(Math.sin(av.t * 14)) * 0.04 : 0);
+          av.box.rotation.y = -av.group.rotation.y * 0 + Math.sin(av.t * 2) * 0.05;
+        }
+        if (carrying) {
+          // 두 팔을 위로 들어 상자를 받친다
+          av.armL.rotation.x = -Math.PI * 0.92;
+          av.armR.rotation.x = -Math.PI * 0.92;
+        } else {
+          av.armL.rotation.x = agent.anim === "type" && !reduced ? -0.9 + Math.sin(av.t * 18) * 0.15 : -swing * 0.6;
+          av.armR.rotation.x = agent.anim === "type" && !reduced ? -0.9 - Math.sin(av.t * 18) * 0.15 : swing * 0.6;
+        }
         av.body.position.y = (sitting ? 0.45 : 0.62) + (walking && !reduced ? Math.abs(Math.sin(av.t * 14)) * 0.05 : 0);
         av.head.position.y = (sitting ? 0.95 : 1.12) + (agent.anim === "talk" && !reduced ? Math.sin(av.t * 10) * 0.03 : 0);
         av.legL.visible = av.legR.visible = !sitting;
