@@ -322,3 +322,15 @@ vercel dev
 
 **Happy automating! 🚀**
 # Instagram DM Bot
+
+---
+
+## 🏢 나의 AI Office (별도 앱)
+
+`office/` 폴더에 픽셀 사무실 UI 껍데기가 들어 있습니다. 봇과 독립된 Vite + React 정적 앱이에요.
+
+```bash
+cd office && npm install && npm run dev   # http://localhost:3000
+```
+
+자세한 내용은 [office/README.md](office/README.md) 를 보세요.
