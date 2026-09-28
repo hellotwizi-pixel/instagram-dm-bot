@@ -35,14 +35,38 @@ export type Kit = Map<KitName, { root: THREE.Group; size: THREE.Vector3; center:
 
 const base = () => `${import.meta.env.BASE_URL.replace(/\/?$/, "/")}models/kenney/`;
 
-/** 모델 전부 읽기. 하나라도 실패하면 null → 절차적 가구로 대체 */
+/** GLB 파일을 따로 못 올리는 호스팅(미리보기 등)용: models/kenney.json = { 이름: base64 } */
+async function loadBundle(): Promise<Record<string, string> | null> {
+  try {
+    const res = await fetch(`${base().replace(/kenney\/$/, "")}kenney.json`);
+    if (!res.ok) return null;
+    return (await res.json()) as Record<string, string>;
+  } catch {
+    return null;
+  }
+}
+
+function b64ToBuffer(b64: string): ArrayBuffer {
+  const bin = atob(b64);
+  const out = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i += 1) out[i] = bin.charCodeAt(i);
+  return out.buffer;
+}
+
+/** 모델 전부 읽기. 개별 .glb 가 없으면 kenney.json 묶음을 시도하고, 그것도 없으면 null → 절차적 가구로 대체 */
 export async function loadKit(): Promise<Kit | null> {
   const loader = new GLTFLoader();
   const kit: Kit = new Map();
+  const probe = await fetch(`${base()}${KIT_NAMES[0]}.glb`, { method: "HEAD" }).then((r) => r.ok && (r.headers.get("content-type") ?? "").includes("model")).catch(() => false);
+  const bundle = probe ? null : await loadBundle();
+  if (!probe && !bundle) {
+    console.warn("[office] Kenney 가구 키트 파일이 없어 절차적 가구로 대체합니다");
+    return null;
+  }
   try {
     await Promise.all(
       KIT_NAMES.map(async (name) => {
-        const gltf = await loader.loadAsync(`${base()}${name}.glb`);
+        const gltf = bundle ? await loader.parseAsync(b64ToBuffer(bundle[name]), "") : await loader.loadAsync(`${base()}${name}.glb`);
         const root = gltf.scene;
         root.traverse((o) => {
           if ((o as THREE.Mesh).isMesh) {
