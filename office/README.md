@@ -105,6 +105,17 @@ office/
 └── public/favicon.svg
 ```
 
+## 3D 에셋 (모두 CC0)
+
+| 무엇 | 출처 | 위치 |
+|---|---|---|
+| 가구 (책상·의자·소파·책장·커피바·화분·벤치·가로등…) | [Kenney Furniture Kit](https://kenney.nl/assets/furniture-kit) | `public/models/kenney/*.glb` |
+| 캐릭터 12종 (캐주얼·정장·흰 가운·엘프, 걷기·상자 들고 걷기·앉기 애니메이션) | [Quaternius Ultimate Animated Character Pack](https://quaternius.com) | `public/models/characters/*.glb` (원본 .gltf 를 .glb 로 바꾸고 쓰는 애니메이션만 남김) |
+
+- 파일이 없으면 자동으로 예전 절차적 가구·캡슐 아바타로 돌아갑니다.
+- 캐릭터 배정: 대표·팀장·PM 은 정장, 관리동(법무·보안·AI-OS)은 흰 가운, 헤르메스 HQ 일부는 엘프, 나머지는 캐주얼. 셔츠·머리 색은 `STAFF_LIST` 의 색을 그대로 입힙니다 (`src/game/characters.ts`).
+- 정적 호스팅이 `.glb` 를 못 올리는 경우 `models/kenney.json`, `models/characters.json` (base64 묶음) 으로도 읽습니다.
+
 ## 보고 발행 붙이기 (선택)
 
 `REPORT_ENDPOINT` 에 URL을 넣으면 "📤 보고 발행" 버튼이 그 주소로 보고서 JSON을 POST 합니다.

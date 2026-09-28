@@ -33,6 +33,7 @@ import {
 } from "./world";
 import { PROJECTS } from "../../company.config";
 import { heightOf, loadKit, place, type Kit } from "./models";
+import { buildRig, loadCharacters, playRig, type Rig } from "./characters";
 
 const PROJECT_COLOR: Record<string, string> = Object.fromEntries(PROJECTS.map((p) => [p.id, p.color]));
 
@@ -275,6 +276,9 @@ type Avatar = {
   boxLabel: THREE.Sprite | null;
   boxKey: string;
   t: number;
+  /** 절차적 몸통 (모델이 없을 때만 보임; 클릭 판정에도 씀) */
+  parts: THREE.Object3D[];
+  rig: Rig | null;
 };
 
 function makeAvatar(agent: Agent, scene: THREE.Scene): Avatar {
@@ -351,7 +355,7 @@ function makeAvatar(agent: Agent, scene: THREE.Scene): Avatar {
 
   group.add(body, head, cap, legL, legR, armL, armR, eyeL, eyeR, ring, marker, label);
   scene.add(group);
-  return { group, body, head, legL, legR, armL, armR, ring, marker, label, bubble: null, bubbleText: "", projectId: null, box, boxMat, boxLabel: null, boxKey: "", t: Math.random() * 10 };
+  return { group, body, head, legL, legR, armL, armR, ring, marker, label, bubble: null, bubbleText: "", projectId: null, box, boxMat, boxLabel: null, boxKey: "", t: Math.random() * 10, parts: [body, head, cap, legL, legR, armL, armR, eyeL, eyeR], rig: null };
 }
 
 function addBox(parent: THREE.Object3D, w: number, h: number, d: number, x: number, y: number, z: number, material: THREE.Material, shadow = true) {
@@ -843,11 +847,11 @@ export default function OfficeWorld({ engine, snap, selectedId, follow, onSelect
     entranceLabel.scale.multiplyScalar(0.7);
     scene.add(entranceLabel);
 
+    let disposed = false;
     // 방·가구·리액터
     const roomMeshes = new Map<string, { floor: THREE.Mesh; frame: THREE.Mesh }>();
     for (const room of ROOMS) roomMeshes.set(room.id, buildRoom(room, scene, mats));
     // 가구: Kenney 키트를 읽어서 놓고, 실패하면 절차적 가구
-    let disposed = false;
     loadKit().then((kit) => {
       if (disposed) return;
       for (const prop of PROPS) buildProp(prop, scene, mats, kit);
@@ -858,6 +862,18 @@ export default function OfficeWorld({ engine, snap, selectedId, follow, onSelect
     // 아바타
     const avatars = new Map<string, Avatar>();
     for (const agent of engine.agents) avatars.set(agent.id, makeAvatar(agent, scene));
+    loadCharacters().then((set) => {
+      if (disposed || !set) return;
+      for (const agent of engine.agents) {
+        const av = avatars.get(agent.id);
+        if (!av) continue;
+        const rig = buildRig(set, agent);
+        if (!rig) continue;
+        for (const part of av.parts) part.visible = false;
+        av.group.add(rig.root);
+        av.rig = rig;
+      }
+    });
 
     // 지식 입자
     const MAX_P = 60;
@@ -949,6 +965,9 @@ export default function OfficeWorld({ engine, snap, selectedId, follow, onSelect
     // 디버그: ?view=x,z,zoom 으로 카메라 고정 (스크린샷 확인용)
     const debugView = (new URLSearchParams(location.search).get("view") ?? "").split(",").map(Number).filter((n) => Number.isFinite(n));
     if (debugView.length !== 3) debugView.length = 0;
+    // 디버그: ?follow=직원id,zoom 으로 그 직원을 따라간다
+    const debugNoLabels = new URLSearchParams(location.search).get("labels") === "0";
+    const debugFollow = (new URLSearchParams(location.search).get("follow") ?? "").split(",").filter(Boolean);
     const tmpTarget = new THREE.Vector3();
     const tmpCam = new THREE.Vector3();
     let raf = 0;
@@ -959,7 +978,12 @@ export default function OfficeWorld({ engine, snap, selectedId, follow, onSelect
       const s = snapRef.current;
 
       // 카메라: 가까이 + 자동 추적이면 초점으로 스르륵
-      if (debugView.length === 3) {
+      if (debugFollow) {
+        const a = engine.agentById.get(debugFollow[0]);
+        if (a) controls.target.set(a.x + 0.5, 0, a.y + 0.5);
+        camera.zoom = Number(debugFollow[1]) || 6;
+        camera.updateProjectionMatrix();
+      } else if (debugView.length === 3) {
         controls.target.set(debugView[0], 0, debugView[1]);
         camera.zoom = debugView[2];
         camera.updateProjectionMatrix();
@@ -1023,7 +1047,9 @@ export default function OfficeWorld({ engine, snap, selectedId, follow, onSelect
         // 업무 상자: 프로젝트·요청자가 기록에 있고 이동 중일 때만. 이름표는 위로 밀어 올린다
         const carrying = walking && Boolean(agent.project && agent.requester);
         av.box.visible = carrying;
-        av.label.position.y = carrying ? 2.05 : 1.55;
+        const lift = av.rig ? 0.25 : 0; // 모델 캐릭터는 캡슐보다 조금 커서 머리 위 요소를 올린다
+        av.label.position.y = (carrying ? 2.05 : 1.55) + lift;
+        av.marker.position.y = 1.62 + lift;
         if (carrying) {
           const key = `${agent.project}|${agent.requester}`;
           if (av.boxKey !== key) {
@@ -1038,7 +1064,7 @@ export default function OfficeWorld({ engine, snap, selectedId, follow, onSelect
             av.boxLabel.position.set(0, 0.02, 0.28);
             av.box.add(av.boxLabel);
           }
-          av.box.position.y = 1.62 + (!reduced ? Math.abs(Math.sin(av.t * 14)) * 0.04 : 0);
+          av.box.position.y = 1.62 + lift + (!reduced ? Math.abs(Math.sin(av.t * 14)) * 0.04 : 0);
           av.box.rotation.y = -av.group.rotation.y * 0 + Math.sin(av.t * 2) * 0.05;
         }
         if (carrying) {
@@ -1051,7 +1077,13 @@ export default function OfficeWorld({ engine, snap, selectedId, follow, onSelect
         }
         av.body.position.y = (sitting ? 0.45 : 0.62) + (walking && !reduced ? Math.abs(Math.sin(av.t * 14)) * 0.05 : 0);
         av.head.position.y = (sitting ? 0.95 : 1.12) + (agent.anim === "talk" && !reduced ? Math.sin(av.t * 10) * 0.03 : 0);
-        av.legL.visible = av.legR.visible = !sitting;
+        av.legL.visible = av.legR.visible = !sitting && !av.rig;
+        // 모델 애니메이션: 걷기 / 상자 들고 걷기 / 앉기 / 대기
+        if (av.rig) {
+          playRig(av.rig, walking ? (carrying ? "Walk_Carry" : "Walk") : sitting ? "SitDown" : "Idle");
+          if (!reduced) av.rig.mixer.update(dt);
+          av.rig.mixer.timeScale = walking ? 1.15 : 1;
+        }
         // 프로젝트 링
         if (av.projectId !== agent.project) {
           av.projectId = agent.project;
@@ -1066,6 +1098,8 @@ export default function OfficeWorld({ engine, snap, selectedId, follow, onSelect
           av.marker.rotation.y += dt * 3;
         }
         // 선택 표시
+        av.label.visible = !debugNoLabels;
+        if (av.bubble) av.bubble.visible = !debugNoLabels;
         av.label.material.opacity = picked === agent.id ? 1 : 0.92;
         (av.label.material as THREE.SpriteMaterial).color.set(picked === agent.id ? 0xffcf6e : 0xffffff);
         // 말풍선
@@ -1084,7 +1118,7 @@ export default function OfficeWorld({ engine, snap, selectedId, follow, onSelect
               size: 24,
               border: agent.speechKind === "think" ? "#8b7cff" : "#50d6ff",
             });
-            av.bubble.position.y = 2.15;
+            av.bubble.position.y = 2.15 + lift;
             av.bubble.scale.multiplyScalar(0.6);
             av.group.add(av.bubble);
           }
