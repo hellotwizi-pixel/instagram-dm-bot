@@ -399,6 +399,13 @@ export function walkable(x: number, y: number): boolean {
  * 복도 — 두 개의 링 복도(코어 둘레 · 두 링 사이)와 각 방 문 앞에서 링까지 이어지는 스포크.
  * 복도 밖 바닥도 걸을 수는 있지만 경로 비용이 높아서 캐릭터는 복도를 따라 돈다.
  */
+/** 렌더러가 매끈하게 그릴 복도 모양: 타원 링 (rx, ry, 폭) 과 스포크 (문 앞 → 링) */
+export const CORRIDOR_RINGS: { rx: number; ry: number; width: number }[] = [
+  { rx: 16, ry: 12, width: 2.4 },
+  { rx: 35, ry: 28, width: 2.6 },
+];
+export const CORRIDOR_SPOKES: { from: Pt; to: Pt }[] = [];
+
 function buildCorridor(): Uint8Array {
   const c = new Uint8Array(COLS * ROWS);
   const mark = (x: number, y: number) => {
@@ -420,13 +427,16 @@ function buildCorridor(): Uint8Array {
     const dx = Math.sign(toward.x - x);
     const dy = Math.sign(toward.y - y);
     const horizontal = Math.abs(toward.x - x) * ROWS > Math.abs(toward.y - y) * COLS;
+    let end = from;
     for (let i = 0; i < 40; i += 1) {
       if (!walkable(x, y)) break;
       mark(x, y);
+      end = { x, y };
       if (i > 0 && c[y * COLS + x] && isRingTile(x, y)) break;
       if (horizontal) x += dx;
       else y += dy;
     }
+    CORRIDOR_SPOKES.push({ from, to: end });
   };
   const isRingTile = (x: number, y: number) => {
     for (const [rx, ry, w] of [
@@ -440,13 +450,18 @@ function buildCorridor(): Uint8Array {
   };
   for (const room of ROOMS) spoke(doorApproach(room), CENTER);
   // 출입구 → 바깥 링
+  let entranceEnd = ENTRANCE.y - 1;
   for (let y = ROWS - 2; y >= CENTER.y; y -= 1) {
     mark(ENTRANCE.x, y);
     mark(ENTRANCE.x + 1, y);
+    entranceEnd = y;
     if (isRingTile(ENTRANCE.x, y)) break;
   }
+  CORRIDOR_SPOKES.push({ from: { x: ENTRANCE.x, y: ENTRANCE.y - 1 }, to: { x: ENTRANCE.x, y: entranceEnd } });
+  CORRIDOR_SPOKES.push({ from: { x: ENTRANCE.x + 1, y: ENTRANCE.y - 1 }, to: { x: ENTRANCE.x + 1, y: entranceEnd } });
   // 미미르 단말 앞 ↔ 코어 링
   for (let y = MIMIR_SPOT.y; y <= CEO_ROOM.y; y += 1) mark(MIMIR_SPOT.x, y);
+  CORRIDOR_SPOKES.push({ from: { x: MIMIR_SPOT.x, y: MIMIR_SPOT.y }, to: { x: MIMIR_SPOT.x, y: CEO_ROOM.y } });
   return c;
 }
 

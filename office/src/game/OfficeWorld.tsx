@@ -9,10 +9,15 @@ import * as THREE from "three";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 import type { Agent, Company, DeptStatus, Snapshot } from "./sim";
 import { REPORT_PHASE } from "./sim";
+import { EffectComposer } from "three/examples/jsm/postprocessing/EffectComposer.js";
+import { RenderPass } from "three/examples/jsm/postprocessing/RenderPass.js";
+import { UnrealBloomPass } from "three/examples/jsm/postprocessing/UnrealBloomPass.js";
 import {
+  CENTER,
   CEO_ROOM,
   COLS,
-  CORRIDOR,
+  CORRIDOR_RINGS,
+  CORRIDOR_SPOKES,
   ENTRANCE,
   MEETING_ROOM,
   MIMIR_CENTER,
@@ -21,7 +26,6 @@ import {
   ROOMS,
   ROWS,
   roomOf,
-  walkable,
   type Prop,
   type Room,
 } from "./world";
@@ -244,6 +248,25 @@ function buildRoom(room: Room, scene: THREE.Scene, mats: ReturnType<typeof makeM
   addBox(g, 0.16, 0.1, room.h + 0.05, room.x + 0.5, WALL_H + 0.02, cz, barMat, false);
   addBox(g, 0.16, 0.1, room.h + 0.05, room.x + room.w - 0.5, WALL_H + 0.02, cz, barMat, false);
   void inner;
+  // 러그 (부서·프로젝트 방)
+  if (room.kind === "dept" || room.kind === "project") {
+    const rug = addBox(g, Math.max(2, room.w - 5), 0.02, Math.max(2, room.h - 5), cx, 0.1, cz + 0.5, mats.rugSoft, false);
+    rug.receiveShadow = true;
+  }
+  // 벽 포스터 2장 (위쪽 벽 안쪽)
+  for (const [ox, color] of [
+    [-room.w / 4, room.color ?? "#50d6ff"],
+    [room.w / 4, "#ffcf6e"],
+  ] as [number, string][]) {
+    const poster = new THREE.Mesh(new THREE.PlaneGeometry(1.4, 1), new THREE.MeshStandardMaterial({ color: new THREE.Color(color), emissive: new THREE.Color(color), emissiveIntensity: 0.15, roughness: 0.8 }));
+    poster.position.set(cx + ox, 1.3, room.y + 0.66);
+    g.add(poster);
+  }
+  // 천장 펜던트 조명 (발광 판)
+  const lamp = addBox(g, Math.min(3, room.w - 4), 0.08, 0.6, cx, WALL_H + 0.6, cz, mats.lamp, false);
+  lamp.receiveShadow = false;
+  const cord = addBox(g, 0.04, 0.6, 0.04, cx, WALL_H + 0.95, cz, mats.metal, false);
+  cord.receiveShadow = false;
   // 이름표
   const label = textSprite(`${room.icon} ${room.name}`, {
     bg: room.color ? room.color : room.kind === "ceo" ? "#ffcf6e" : "#0d1322",
@@ -275,6 +298,12 @@ function buildProp(prop: Prop, scene: THREE.Scene, mats: ReturnType<typeof makeM
       screen.receiveShadow = false;
       addBox(g, 0.12, 0.2, 0.12, cx, 0.82, cz - 0.28, mats.monitor);
       addBox(g, 0.5, 0.03, 0.18, cx, 0.78, cz + 0.15, mats.metal, false);
+      // 컵·서류
+      const cup = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.07, 0.16, 10), mats.white);
+      cup.position.set(cx + 0.9, 0.84, cz + 0.1);
+      cup.castShadow = true;
+      g.add(cup);
+      addBox(g, 0.5, 0.02, 0.36, cx - 0.9, 0.77, cz + 0.05, mats.white, false);
       // 의자 (자리 쪽)
       addBox(g, 0.5, 0.08, 0.5, cx, 0.42, cz + 1, mats.chair);
       addBox(g, 0.5, 0.5, 0.08, cx, 0.7, cz + 1.24, mats.chair);
@@ -434,6 +463,8 @@ function makeMaterials() {
     sofa: new THREE.MeshStandardMaterial({ color: PALETTE.sofa, roughness: 0.9 }),
     white: new THREE.MeshStandardMaterial({ color: 0xe8edf5, roughness: 0.6 }),
     rug: new THREE.MeshStandardMaterial({ color: 0x3a3325, roughness: 1 }),
+    rugSoft: new THREE.MeshStandardMaterial({ color: 0x2b3446, roughness: 1 }),
+    lamp: new THREE.MeshStandardMaterial({ color: 0xfff4dc, emissive: 0xfff1c9, emissiveIntensity: 1.6, roughness: 0.4 }),
   };
 }
 
@@ -539,36 +570,39 @@ export default function OfficeWorld({ engine, snap, selectedId, follow, onSelect
     ground.position.set(COLS / 2, 0, ROWS / 2);
     ground.receiveShadow = true;
     scene.add(ground);
-    const corridorCount = CORRIDOR.reduce((n, v) => n + v, 0);
-    const corridorMesh = new THREE.InstancedMesh(new THREE.BoxGeometry(1, 0.05, 1), new THREE.MeshStandardMaterial({ color: PALETTE.corridor, roughness: 0.7 }), corridorCount);
-    corridorMesh.receiveShadow = true;
-    const m = new THREE.Matrix4();
-    let k = 0;
-    for (let y = 0; y < ROWS; y += 1) {
-      for (let x = 0; x < COLS; x += 1) {
-        if (!CORRIDOR[y * COLS + x] || !walkable(x, y)) continue;
-        m.makeTranslation(x + 0.5, 0.025, y + 0.5);
-        corridorMesh.setMatrixAt(k++, m);
+    // 복도 — 타일 계단 대신 매끈한 타원 띠 + 스포크 (타일은 경로 비용에만 쓴다)
+    const corridorMat = new THREE.MeshStandardMaterial({ color: PALETTE.corridor, roughness: 0.65 });
+    const edgeMat = new THREE.LineBasicMaterial({ color: PALETTE.corridorLine, transparent: true, opacity: 0.45 });
+    const ellipsePts = (rx: number, ry: number) => {
+      const curve = new THREE.EllipseCurve(0, 0, rx, ry, 0, Math.PI * 2, false, 0);
+      return curve.getPoints(160);
+    };
+    for (const ring of CORRIDOR_RINGS) {
+      const half = ring.width / 2;
+      const shape = new THREE.Shape(ellipsePts(ring.rx + half, ring.ry + half));
+      const hole = new THREE.Path(ellipsePts(ring.rx - half, ring.ry - half));
+      shape.holes.push(hole);
+      const geo = new THREE.ShapeGeometry(shape, 4);
+      const mesh = new THREE.Mesh(geo, corridorMat);
+      mesh.rotation.x = -Math.PI / 2;
+      mesh.position.set(CENTER.x + 0.5, 0.03, CENTER.y + 0.5);
+      mesh.receiveShadow = true;
+      scene.add(mesh);
+      for (const r of [half, -half]) {
+        const pts = ellipsePts(ring.rx + r, ring.ry + r).map((p) => new THREE.Vector3(CENTER.x + 0.5 + p.x, 0.05, CENTER.y + 0.5 + p.y));
+        scene.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints(pts), edgeMat));
       }
     }
-    corridorMesh.count = k;
-    scene.add(corridorMesh);
-    // 복도 안내선 (시안)
-    const lineMat = new THREE.LineBasicMaterial({ color: PALETTE.corridorLine, transparent: true, opacity: 0.35 });
-    const linePts: number[] = [];
-    for (let y = 0; y < ROWS; y += 1) {
-      for (let x = 0; x < COLS; x += 1) {
-        if (!CORRIDOR[y * COLS + x]) continue;
-        const edge = (nx: number, ny: number) => !CORRIDOR[ny * COLS + nx] && walkable(nx, ny);
-        if (edge(x, y - 1)) linePts.push(x, 0.06, y, x + 1, 0.06, y);
-        if (edge(x, y + 1)) linePts.push(x, 0.06, y + 1, x + 1, 0.06, y + 1);
-        if (edge(x - 1, y)) linePts.push(x, 0.06, y, x, 0.06, y + 1);
-        if (edge(x + 1, y)) linePts.push(x + 1, 0.06, y, x + 1, 0.06, y + 1);
-      }
+    for (const spoke of CORRIDOR_SPOKES) {
+      const dx = spoke.to.x - spoke.from.x;
+      const dz = spoke.to.y - spoke.from.y;
+      const len = Math.hypot(dx, dz) + 1;
+      const horizontal = Math.abs(dx) >= Math.abs(dz);
+      const mesh = new THREE.Mesh(new THREE.BoxGeometry(horizontal ? len : 1.6, 0.04, horizontal ? 1.6 : len), corridorMat);
+      mesh.position.set((spoke.from.x + spoke.to.x) / 2 + 0.5, 0.03, (spoke.from.y + spoke.to.y) / 2 + 0.5);
+      mesh.receiveShadow = true;
+      scene.add(mesh);
     }
-    const lineGeo = new THREE.BufferGeometry();
-    lineGeo.setAttribute("position", new THREE.Float32BufferAttribute(linePts, 3));
-    scene.add(new THREE.LineSegments(lineGeo, lineMat));
     // 출입구 매트
     const mat = addBox(scene, 5, 0.06, 1.6, ENTRANCE.x + 1, 0.03, ENTRANCE.y - 0.6, new THREE.MeshStandardMaterial({ color: 0x1f6f8a, emissive: 0x50d6ff, emissiveIntensity: 0.25 }), false);
     mat.receiveShadow = false;
@@ -621,10 +655,15 @@ export default function OfficeWorld({ engine, snap, selectedId, follow, onSelect
     renderer.domElement.addEventListener("pointerdown", onDown);
     renderer.domElement.addEventListener("pointerup", onUp);
 
+    const composer = new EffectComposer(renderer);
+    composer.addPass(new RenderPass(scene, camera));
+    const bloom = new UnrealBloomPass(new THREE.Vector2(1, 1), 0.55, 0.6, 0.82);
+    composer.addPass(bloom);
     const resize = () => {
       const w = mount.clientWidth;
       const h = mount.clientHeight;
       renderer.setSize(w, h, false);
+      composer.setSize(w, h);
       camera.aspect = w / h;
       camera.updateProjectionMatrix();
     };
@@ -689,8 +728,10 @@ export default function OfficeWorld({ engine, snap, selectedId, follow, onSelect
         av.group.visible = !off;
         if (off) continue;
         av.group.position.set(agent.x + 0.5 + agent.jitter, 0, agent.y + 0.5);
-        const face = agent.facing === "up" ? Math.PI : agent.facing === "down" ? 0 : agent.facing === "left" ? -Math.PI / 2 : Math.PI / 2;
-        av.group.rotation.y += (face - av.group.rotation.y) * 0.2;
+        // 최단 각도로 회전
+        let delta = agent.heading - av.group.rotation.y;
+        delta = Math.atan2(Math.sin(delta), Math.cos(delta));
+        av.group.rotation.y += delta * 0.18;
         const walking = agent.anim === "walk";
         const sitting = agent.anim === "sit" || agent.anim === "type";
         const swing = walking && !reduced ? Math.sin(av.t * 14) * 0.5 : 0;
@@ -775,7 +816,7 @@ export default function OfficeWorld({ engine, snap, selectedId, follow, onSelect
         pGeo.attributes.color.needsUpdate = true;
       }
 
-      renderer.render(scene, camera);
+      composer.render();
       raf = requestAnimationFrame(paint);
     };
     raf = requestAnimationFrame(paint);
@@ -786,6 +827,7 @@ export default function OfficeWorld({ engine, snap, selectedId, follow, onSelect
       renderer.domElement.removeEventListener("pointerdown", onDown);
       renderer.domElement.removeEventListener("pointerup", onUp);
       controls.dispose();
+      composer.dispose();
       renderer.dispose();
       mount.removeChild(renderer.domElement);
     };

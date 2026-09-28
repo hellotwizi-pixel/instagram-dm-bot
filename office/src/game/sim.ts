@@ -74,6 +74,8 @@ export type Agent = {
   x: number;
   y: number;
   facing: Facing;
+  /** 바라보는 각도(라디안, +z 가 0). 걷는 동안 연속으로 바뀐다 */
+  heading: number;
   anim: Anim;
   status: AgentStatus;
   home: Pt;
@@ -360,6 +362,7 @@ export class Company {
       x: at.x,
       y: at.y,
       facing: "down",
+      heading: 0,
       anim: seed.rank === "ceo" ? "sit" : "idle",
       status: seed.rank === "ceo" ? "업무 중" : "출근 전",
       home,
@@ -1505,6 +1508,7 @@ export class Company {
         break;
       case "face":
         agent.facing = action.dir;
+        agent.heading = action.dir === "up" ? Math.PI : action.dir === "down" ? 0 : action.dir === "left" ? -Math.PI / 2 : Math.PI / 2;
         agent.current = null;
         break;
       case "anim":
@@ -1531,16 +1535,21 @@ export class Company {
     const dy = node.y - agent.y;
     const dist = Math.hypot(dx, dy);
 
-    if (dist < 0.06) {
-      agent.x = node.x;
-      agent.y = node.y;
+    const lastNode = agent.pathIdx === agent.path.length - 1;
+    if (dist < (lastNode ? 0.06 : 0.35)) {
+      if (lastNode) {
+        agent.x = node.x;
+        agent.y = node.y;
+      }
       agent.pathIdx += 1;
       return;
     }
 
     if (Math.abs(dx) > Math.abs(dy)) agent.facing = dx > 0 ? "right" : "left";
     else agent.facing = dy > 0 ? "down" : "up";
+    agent.heading = Math.atan2(dx, dy);
 
+    // 웨이포인트 사이가 멀면 다음 웨이포인트 쪽으로 미리 꺾어 곡선처럼 돈다
     const step = WALK_SPEED * dt;
     agent.x += (dx / dist) * Math.min(step, dist);
     agent.y += (dy / dist) * Math.min(step, dist);
