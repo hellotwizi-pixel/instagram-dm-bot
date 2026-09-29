@@ -1,0 +1,13 @@
+node_modules/
+dist/
+.DS_Store
+hermes-desk/local-data/
+hermes-desk/__pycache__/
+hermes-desk/.venv/
+hermes-desk/*.db
+hermes-desk/*.db-*
+hermes-desk/*.log
+hermes-desk/model-health.json
+hermes-desk/reporting_summaries.json
+hermes-desk/설치-에이전트-목록.json
+hermes-desk/observer/settings.json

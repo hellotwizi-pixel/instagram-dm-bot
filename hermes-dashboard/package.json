@@ -1,0 +1,15 @@
+{
+  "name": "hermes-dashboard",
+  "private": true,
+  "description": "Hermes Desk(미미르 대시보드) + Hermes Office(3D 오피스) 통합 개발 폴더",
+  "type": "module",
+  "scripts": {
+    "dev": "node dev.mjs",
+    "dev:office": "node dev.mjs --office",
+    "dev:desk": "node dev.mjs --desk",
+    "build": "npm --prefix office run build",
+    "check": "npm --prefix office run build && cd office && npx tsx scripts/check-world.ts && npx tsx scripts/run-scenario.ts && npx tsx scripts/check-box.ts",
+    "install:office": "npm --prefix office install",
+    "install:desk": "cd hermes-desk && python3 -m venv .venv && .venv/bin/python -m pip install -r requirements.txt"
+  }
+}

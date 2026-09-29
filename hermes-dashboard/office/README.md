@@ -9,6 +9,8 @@ AI 에이전트들이 출근하고, 자리에 앉아 일하고, 회의실에 모
 
 ## 실행 (Mac, 더블클릭)
 
+> Hermes Desk 와 같이 켜려면 상위 폴더의 `대시보드 열기.command` 를 쓰세요 (`hermes-dashboard/README.md`). 아래는 오피스만 켜는 방법입니다.
+
 1. Hermes Desk 를 먼저 켭니다 (`Hermes Desk 열기.command`). 실시간으로 보지 않을 거면 건너뛰어도 됩니다.
 2. 이 폴더의 **`Hermes Office 열기.command`** 를 더블클릭합니다.
    - 처음엔 macOS 가 막을 수 있어요. 그러면 파일을 **오른쪽 클릭 → 열기** 로 한 번 열어 주세요.
@@ -125,7 +127,7 @@ office/
 ## Vercel 배포
 
 이 폴더는 루트의 인스타그램 DM 봇과 별개의 앱입니다. Vercel에서 **새 프로젝트**를 만들고
-Root Directory 를 `office` 로 지정하면 `office/vercel.json` 설정으로 정적 빌드됩니다.
+Root Directory 를 `hermes-dashboard/office` 로 지정하면 `office/vercel.json` 설정으로 정적 빌드됩니다.
 
 ## 크레딧
 

@@ -1,0 +1,12 @@
+name: hermes-desk-observer
+version: 1.0.0
+description: Local request, model, and work activity records for Hermes Desk.
+kind: standalone
+provides_hooks:
+  - pre_llm_call
+  - pre_api_request
+  - post_api_request
+  - api_request_error
+  - post_llm_call
+  - pre_tool_call
+  - post_tool_call

@@ -327,10 +327,10 @@ vercel dev
 
 ## 🏢 나의 AI Office (별도 앱)
 
-`office/` 폴더에 픽셀 사무실 UI 껍데기가 들어 있습니다. 봇과 독립된 Vite + React 정적 앱이에요.
+`hermes-dashboard/` 폴더에 Hermes Desk(미미르 대시보드)와 Hermes Office(3D 오피스)가 통합 개발 폴더로 들어 있습니다. 봇과 독립된 앱이에요.
 
 ```bash
-cd office && npm install && npm run dev   # http://localhost:3000
+cd hermes-dashboard && npm run dev   # Hermes Desk + Office · http://localhost:3000
 ```
 
-자세한 내용은 [office/README.md](office/README.md) 를 보세요.
+자세한 내용은 [hermes-dashboard/README.md](hermes-dashboard/README.md) 를 보세요.
